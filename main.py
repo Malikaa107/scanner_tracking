@@ -18,6 +18,7 @@ DB_CONFIG = {
     "port": "5432"
 }
 
+
 class AppScanner(ctk.CTk): #kerangka utama
     def __init__(self):
         super().__init__()
