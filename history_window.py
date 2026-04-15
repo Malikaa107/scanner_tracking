@@ -26,7 +26,7 @@ class HistoryWindow(ctk.CTkToplevel):
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Treeview", background="#1e293b", foreground="white", fieldbackground="#1e293b", rowheight=35, borderwidth=1)
-        style.configure("Treeview.Heading", background="#0f172a", foreground="#38bdf8", font=("Arial", 12, "bold"))
+        style.configure("Treeview.Heading", background="#0f172a", foreground="#94a3b8", font=("Arial", 12, "bold"))
         style.map("Treeview", background=[('selected', '#0ea5e9')])
 
         self.setup_ui()
@@ -46,9 +46,9 @@ class HistoryWindow(ctk.CTkToplevel):
         self.hist_time_lbl = ctk.CTkLabel(self.top_f, text="00:00:00", font=("Consolas", 20, "bold"), text_color="#38bdf8")
         self.hist_time_lbl.pack(side="left", padx=15)
 
-        ctk.CTkButton(self.top_f, text="LIHAT SEMUA DATA", fg_color="#10b981", text_color="black", font=("Arial", 11, "bold"), command=self.refresh_history).pack(side="right", padx=15)
+        ctk.CTkButton(self.top_f, text="LIHAT SEMUA DATA", fg_color="#10b981", hover_color="#059669", text_color="white", font=("Arial", 11, "bold"), command=self.refresh_history).pack(side="right", padx=15)
 
-        self.shift_panel = ctk.CTkFrame(self, fg_color="#f1f5f9", height=0) 
+        self.shift_panel = ctk.CTkFrame(self, fg_color="#0f172a", height=0) 
         self.shift_panel.pack(fill="x", padx=20)
         
         self.range_panel = ctk.CTkFrame(self, fg_color="#f1f5f9", height=0)
@@ -87,9 +87,9 @@ class HistoryWindow(ctk.CTkToplevel):
 
         btn_f_shift = ctk.CTkFrame(self.shift_container, fg_color="transparent")
         btn_f_shift.pack(pady=10)
-        ctk.CTkButton(btn_f_shift, text="SHIFT 1\n(07:00-15:00)", fg_color="#0ea5e9", height=45, command=lambda: self.apply_shift_filter(1)).pack(side="left", padx=5)
-        ctk.CTkButton(btn_f_shift, text="SHIFT 2\n(15:00-23:00)", fg_color="#f59e0b", height=45, command=lambda: self.apply_shift_filter(2)).pack(side="left", padx=5)
-        ctk.CTkButton(btn_f_shift, text="SHIFT 3\n(23:00-07:00)", fg_color="#6366f1", height=45, command=lambda: self.apply_shift_filter(3)).pack(side="left", padx=5)
+        ctk.CTkButton(btn_f_shift, text="SHIFT 1\n(07:00-15:00)", fg_color="#059669", hover_color="#10b981", height=45, command=lambda: self.apply_shift_filter(1)).pack(side="left", padx=5)
+        ctk.CTkButton(btn_f_shift, text="SHIFT 2\n(15:00-23:00)", fg_color="#d97706", hover_color="#6366f1", height=45, command=lambda: self.apply_shift_filter(2)).pack(side="left", padx=5)
+        ctk.CTkButton(btn_f_shift, text="SHIFT 3\n(23:00-07:00)", fg_color="#4f46e5", hover_color="#6366f1", height=45, command=lambda: self.apply_shift_filter(3)).pack(side="left", padx=5)
 
         # RANGE PANEL (KALENDER START & END)
         self.range_container = ctk.CTkFrame(self.range_panel, fg_color="transparent")
@@ -108,7 +108,7 @@ class HistoryWindow(ctk.CTkToplevel):
         f_end = ctk.CTkFrame(inner_range, fg_color="transparent"); f_end.grid(row=0, column=1, padx=25)
         self.cal_end = Calendar(f_end, selectmode='day', font="Arial 8"); self.cal_end.pack(pady=(0, 10))
         t_end_row = ctk.CTkFrame(f_end, fg_color="transparent"); t_end_row.pack()
-        ctk.CTkLabel(t_end_row, text="END : ", text_color="#e11d48", font=("Arial", 12, "bold")).pack(side="left")
+        ctk.CTkLabel(t_end_row, text="END : ", text_color="#f43f5e", font=("Arial", 12, "bold")).pack(side="left")
         self.h_end = ctk.CTkComboBox(t_end_row, values=[f"{i:02d}" for i in range(24)], width=65); self.h_end.set("23"); self.h_end.pack(side="left")
         self.m_end = ctk.CTkComboBox(t_end_row, values=[f"{i:02d}" for i in range(60)], width=65); self.m_end.set("59"); self.m_end.pack(side="left")
 
@@ -173,7 +173,7 @@ class HistoryWindow(ctk.CTkToplevel):
         self.page_buttons = []
         start = max(1, self.current_page - 2); end = min(total_pages, start + 4)
         for i in range(start, end + 1):
-            btn_color = "#0ea5e9" if i == self.current_page else "#1e293b"
+            btn_color = "#10b981" if i == self.current_page else "#1e293b"
             p_btn = ctk.CTkButton(self.page_num_container, text=str(i), width=40, height=40, fg_color=btn_color, command=lambda p=i: self.go_to_page(p))
             p_btn.pack(side="left", padx=2); self.page_buttons.append(p_btn)
 
