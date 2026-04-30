@@ -6,6 +6,7 @@ from PIL import Image
 from datetime import datetime
 from database import simpan_data, get_connection
 from history_window import HistoryWindow
+from api_server import start_api_server_in_thread
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
 NODE_RED_URL = "http://127.0.0.1:1880/update_plc"
@@ -154,5 +155,6 @@ class AppScanner(ctk.CTk):
         self.after(100, self.loop_check)
 
 if __name__ == "__main__":
+    start_api_server_in_thread()
     app = AppScanner()
     app.mainloop() 

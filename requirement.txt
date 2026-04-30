@@ -1,0 +1,6 @@
+customtkinter
+requests
+pillow
+psycopg2-binary
+fastapi
+uvicorn
