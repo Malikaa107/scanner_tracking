@@ -156,3 +156,4 @@ class AppScanner(ctk.CTk):
 if __name__ == "__main__":
     app = AppScanner()
     app.mainloop() 
+

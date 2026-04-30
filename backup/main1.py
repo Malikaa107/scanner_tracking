@@ -181,7 +181,7 @@ class AppScanner(ctk.CTk):
         inner_range = ctk.CTkFrame(self.range_container, fg_color="transparent")
         inner_range.pack(pady=10)
         
-        # BLOK START
+        # BLOK START 
         f_start = ctk.CTkFrame(inner_range, fg_color="transparent")
         f_start.grid(row=0, column=0, padx=25)
         

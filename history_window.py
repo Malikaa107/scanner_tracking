@@ -14,6 +14,7 @@ class HistoryWindow(ctk.CTkToplevel):
         super().__init__(parent)
         self.title("Database History Lengkap")
         self.geometry("1150x850")
+        self.configure(fg_color="#0f172a") 
         self.attributes('-topmost', True)
         
         self.current_page = 1
@@ -22,97 +23,150 @@ class HistoryWindow(ctk.CTkToplevel):
         self.filter_end = None
         self.page_buttons = []
 
-        # STYLE TABEL ASLI
+        # STYLE TABEL
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("Treeview", background="#1e293b", foreground="white", fieldbackground="#1e293b", rowheight=35, borderwidth=1)
-        style.configure("Treeview.Heading", background="#0f172a", foreground="#94a3b8", font=("Arial", 12, "bold"))
-        style.map("Treeview", background=[('selected', '#0ea5e9')])
+        style.configure("Treeview", 
+                        background="#1e293b", 
+                        foreground="white", 
+                        fieldbackground="#1e293b", 
+                        rowheight=35, 
+                        borderwidth=0,
+                        font=("Arial", 11))
+        style.configure("Treeview.Heading", 
+                        background="#0f172a", 
+                        foreground="#38bdf8", 
+                        font=("Arial", 11, "bold"))
+        style.map("Treeview", background=[('selected', '#334155')])
 
         self.setup_ui()
         self.update_history_clock()
         self.load_full_table(is_initial=True)
 
     def setup_ui(self):
-        self.top_f = ctk.CTkFrame(self, fg_color="#1e293b", height=80)
-        self.top_f.pack(fill="x", padx=20, pady=10)
+        # Top header frame 
+        self.top_f = ctk.CTkFrame(self, fg_color="transparent", height=80)
+        self.top_f.pack(fill="x", padx=20, pady=20)
 
-        self.btn_shift = ctk.CTkButton(self.top_f, text="DATA OPERASIONAL SHIFT", width=150, height=45, font=("Arial", 12, "bold"), fg_color="#0f172a", border_width=1, border_color="#38bdf8", command=self.toggle_shift_panel)
+        # Tombol Filter Utama
+        self.btn_shift = ctk.CTkButton(self.top_f, text="DATA OPERASIONAL SHIFT", 
+                                       width=180, height=45, 
+                                       font=("Arial", 11, "bold"), 
+                                       fg_color="#0f172a", 
+                                       border_width=2, 
+                                       border_color="#38bdf8", 
+                                       text_color="white",
+                                       command=self.toggle_shift_panel)
         self.btn_shift.pack(side="left", padx=5)
 
-        self.btn_range = ctk.CTkButton(self.top_f, text="CUSTOM DATE TIME", width=150, height=45, font=("Arial", 12, "bold"), fg_color="#0f172a", border_width=1, border_color="#38bdf8", command=self.toggle_range_panel)
+        self.btn_range = ctk.CTkButton(self.top_f, text="CUSTOM DATE TIME", 
+                                       width=180, height=45, 
+                                       font=("Arial", 11, "bold"), 
+                                       fg_color="#0f172a", 
+                                       border_width=2, 
+                                       border_color="#38bdf8", 
+                                       text_color="white",
+                                       command=self.toggle_range_panel)
         self.btn_range.pack(side="left", padx=5)
         
-        self.hist_time_lbl = ctk.CTkLabel(self.top_f, text="00:00:00", font=("Consolas", 20, "bold"), text_color="#38bdf8")
-        self.hist_time_lbl.pack(side="left", padx=15)
+        self.hist_time_lbl = ctk.CTkLabel(self.top_f, text="00:00:00", 
+                                          font=("Consolas", 24, "bold"), 
+                                          text_color="#38bdf8")
+        self.hist_time_lbl.pack(side="left", padx=25)
 
-        ctk.CTkButton(self.top_f, text="LIHAT SEMUA DATA", fg_color="#10b981", hover_color="#059669", text_color="white", font=("Arial", 11, "bold"), command=self.refresh_history).pack(side="right", padx=15)
+        # Tombol LIHAT SEMUA DATA
+        ctk.CTkButton(self.top_f, text="LIHAT SEMUA DATA", 
+                      fg_color="#0891b2", 
+                      hover_color="#0e7490", 
+                      text_color="white", 
+                      font=("Arial", 11, "bold"), 
+                      width=160, height=45,
+                      command=self.refresh_history).pack(side="right", padx=5)
 
-        self.shift_panel = ctk.CTkFrame(self, fg_color="#0f172a", height=0) 
+        # Filter Panels
+        self.shift_panel = ctk.CTkFrame(self, fg_color="#f1f5f9", height=0) 
         self.shift_panel.pack(fill="x", padx=20)
         
-        self.range_panel = ctk.CTkFrame(self, fg_color="#f1f5f9", height=0)
+        self.range_panel = ctk.CTkFrame(self, fg_color="#f1f5f9", height=0) 
         self.range_panel.pack(fill="x", padx=20)
 
         self.setup_picker_ui()
 
-        # TABEL
-        table_container = ctk.CTkFrame(self, fg_color="transparent")
-        table_container.pack(expand=True, fill="both", padx=20, pady=10)
+        # AREA TABEL
+        self.tree_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.tree_container.pack(expand=True, fill="both", padx=20, pady=10)
 
-        self.tree = ttk.Treeview(table_container, columns=("ID", "Barcode", "Waktu"), show='headings')
-        self.tree.heading("ID", text="NO"); self.tree.heading("Barcode", text="KODE BARCODE"); self.tree.heading("Waktu", text="WAKTU SCAN")
-        self.tree.column("ID", width=70, anchor="center"); self.tree.column("Barcode", width=600, anchor="center"); self.tree.column("Waktu", width=300, anchor="center")
+        self.tree = ttk.Treeview(self.tree_container, columns=("ID", "Barcode", "Waktu"), show='headings')
+        self.tree.heading("ID", text="NO")
+        self.tree.heading("Barcode", text="KODE BARCODE")
+        self.tree.heading("Waktu", text="WAKTU SCAN")
+        
+        self.tree.column("ID", width=100, anchor="center")
+        self.tree.column("Barcode", width=650, anchor="center")
+        self.tree.column("Waktu", width=350, anchor="center")
+        
         self.tree.tag_configure('oddrow', background='#1e293b')
-        self.tree.tag_configure('evenrow', background='#334155')
+        self.tree.tag_configure('evenrow', background='#0f172a') 
         self.tree.pack(side="left", expand=True, fill="both")
         
-        # PAGINATION NO DI BAWAH
+        # PAGINATION
         self.pagination_frame = ctk.CTkFrame(self, fg_color="transparent")
-        self.pagination_frame.pack(fill="x", padx=20, pady=10)
-        self.btn_prev = ctk.CTkButton(self.pagination_frame, text="<", width=40, height=40, fg_color="#1e293b", command=self.prev_page)
+        self.pagination_frame.pack(fill="x", padx=20, pady=20)
+
+        self.btn_prev = ctk.CTkButton(self.pagination_frame, text="<", width=40, height=40, 
+                                      fg_color="#1e293b", font=("Arial", 12, "bold"), command=self.prev_page)
         self.btn_prev.pack(side="left", padx=5)
+
         self.page_num_container = ctk.CTkFrame(self.pagination_frame, fg_color="transparent")
         self.page_num_container.pack(side="left", padx=5)
-        self.btn_next = ctk.CTkButton(self.pagination_frame, text=">", width=40, height=40, fg_color="#1e293b", command=self.next_page)
+
+        self.btn_next = ctk.CTkButton(self.pagination_frame, text=">", width=40, height=40, 
+                                      fg_color="#1e293b", font=("Arial", 12, "bold"), command=self.next_page)
         self.btn_next.pack(side="left", padx=5)
-        self.result_info = ctk.CTkLabel(self.pagination_frame, text="Results: 0", font=("Arial", 12), text_color="#94a3b8")
+
+        self.result_info = ctk.CTkLabel(self.pagination_frame, text="Results: 0", 
+                                        font=("Arial", 12), text_color="#94a3b8")
         self.result_info.pack(side="right", padx=10) 
 
     def setup_picker_ui(self):
         # SHIFT PANEL
         self.shift_container = ctk.CTkFrame(self.shift_panel, fg_color="transparent")
-        self.shift_cal = Calendar(self.shift_container, selectmode='day', font="Arial 9", background="#1e3d59", foreground="white")
+        self.shift_cal = Calendar(self.shift_container, selectmode='day', font="Arial 9")
         self.shift_cal.pack(pady=10)
 
         btn_f_shift = ctk.CTkFrame(self.shift_container, fg_color="transparent")
         btn_f_shift.pack(pady=10)
-        ctk.CTkButton(btn_f_shift, text="SHIFT 1\n(07:00-15:00)", fg_color="#059669", hover_color="#10b981", height=45, command=lambda: self.apply_shift_filter(1)).pack(side="left", padx=5)
-        ctk.CTkButton(btn_f_shift, text="SHIFT 2\n(15:00-23:00)", fg_color="#d97706", hover_color="#6366f1", height=45, command=lambda: self.apply_shift_filter(2)).pack(side="left", padx=5)
-        ctk.CTkButton(btn_f_shift, text="SHIFT 3\n(23:00-07:00)", fg_color="#4f46e5", hover_color="#6366f1", height=45, command=lambda: self.apply_shift_filter(3)).pack(side="left", padx=5)
+        # Tombol Shift
+        ctk.CTkButton(btn_f_shift, text="SHIFT 1\n(07:00-15:00)", fg_color="#38bdf8", text_color="#000000", font=("Arial", 11, "bold"), height=45, command=lambda: self.apply_shift_filter(1)).pack(side="left", padx=5)
+        ctk.CTkButton(btn_f_shift, text="SHIFT 2\n(15:00-23:00)", fg_color="#f59e0b", text_color="#000000", font=("Arial", 11, "bold"), height=45, command=lambda: self.apply_shift_filter(2)).pack(side="left", padx=5)
+        ctk.CTkButton(btn_f_shift, text="SHIFT 3\n(23:00-07:00)", fg_color="#818cf8", text_color="#000000", font=("Arial", 11, "bold"), height=45, command=lambda: self.apply_shift_filter(3)).pack(side="left", padx=5)
 
-        # RANGE PANEL (KALENDER START & END)
+        # RANGE PANEL
         self.range_container = ctk.CTkFrame(self.range_panel, fg_color="transparent")
         inner_range = ctk.CTkFrame(self.range_container, fg_color="transparent")
         inner_range.pack(pady=10)
         
-        # START
         f_start = ctk.CTkFrame(inner_range, fg_color="transparent"); f_start.grid(row=0, column=0, padx=25)
         self.cal_start = Calendar(f_start, selectmode='day', font="Arial 8"); self.cal_start.pack(pady=(0, 10))
         t_start_row = ctk.CTkFrame(f_start, fg_color="transparent"); t_start_row.pack()
-        ctk.CTkLabel(t_start_row, text="START : ", text_color="#1e3d59", font=("Arial", 12, "bold")).pack(side="left")
-        self.h_start = ctk.CTkComboBox(t_start_row, values=[f"{i:02d}" for i in range(24)], width=65); self.h_start.set("00"); self.h_start.pack(side="left")
-        self.m_start = ctk.CTkComboBox(t_start_row, values=[f"{i:02d}" for i in range(60)], width=65); self.m_start.set("00"); self.m_start.pack(side="left")
+        ctk.CTkLabel(t_start_row, text="START : ", text_color="#1e293b", font=("Arial", 11, "bold")).pack(side="left")
+        self.h_start = ctk.CTkComboBox(t_start_row, values=[f"{i:02d}" for i in range(24)], width=60); self.h_start.set("00"); self.h_start.pack(side="left")
+        self.m_start = ctk.CTkComboBox(t_start_row, values=[f"{i:02d}" for i in range(60)], width=60); self.m_start.set("00"); self.m_start.pack(side="left")
 
-        # END
         f_end = ctk.CTkFrame(inner_range, fg_color="transparent"); f_end.grid(row=0, column=1, padx=25)
         self.cal_end = Calendar(f_end, selectmode='day', font="Arial 8"); self.cal_end.pack(pady=(0, 10))
         t_end_row = ctk.CTkFrame(f_end, fg_color="transparent"); t_end_row.pack()
-        ctk.CTkLabel(t_end_row, text="END : ", text_color="#f43f5e", font=("Arial", 12, "bold")).pack(side="left")
-        self.h_end = ctk.CTkComboBox(t_end_row, values=[f"{i:02d}" for i in range(24)], width=65); self.h_end.set("23"); self.h_end.pack(side="left")
-        self.m_end = ctk.CTkComboBox(t_end_row, values=[f"{i:02d}" for i in range(60)], width=65); self.m_end.set("59"); self.m_end.pack(side="left")
+        ctk.CTkLabel(t_end_row, text="END : ", text_color="#e11d48", font=("Arial", 11, "bold")).pack(side="left")
+        self.h_end = ctk.CTkComboBox(t_end_row, values=[f"{i:02d}" for i in range(24)], width=60); self.h_end.set("23"); self.h_end.pack(side="left")
+        self.m_end = ctk.CTkComboBox(t_end_row, values=[f"{i:02d}" for i in range(60)], width=60); self.m_end.set("59"); self.m_end.pack(side="left")
 
-        ctk.CTkButton(self.range_container, text="APPLY RANGE", fg_color="#10b981", text_color="black", font=("Arial", 12, "bold"), height=40, command=self.apply_range_filter).pack(pady=20)
+        # Tombol Apply
+        ctk.CTkButton(self.range_container, text="APPLY FILTER RANGE", 
+                      fg_color="#0ea5e9", 
+                      text_color="#000000", 
+                      font=("Arial", 12, "bold"), 
+                      height=40, width=200,
+                      command=self.apply_range_filter).pack(pady=20)
 
     def toggle_shift_panel(self):
         self.range_container.pack_forget(); self.range_panel.configure(height=0) 
@@ -173,9 +227,13 @@ class HistoryWindow(ctk.CTkToplevel):
         self.page_buttons = []
         start = max(1, self.current_page - 2); end = min(total_pages, start + 4)
         for i in range(start, end + 1):
-            btn_color = "#10b981" if i == self.current_page else "#1e293b"
-            p_btn = ctk.CTkButton(self.page_num_container, text=str(i), width=40, height=40, fg_color=btn_color, command=lambda p=i: self.go_to_page(p))
-            p_btn.pack(side="left", padx=2); self.page_buttons.append(p_btn)
+            # Pagination
+            btn_color = "#0ea5e9" if i == self.current_page else "#1e293b" 
+            p_btn = ctk.CTkButton(self.page_num_container, text=str(i), width=40, height=40, 
+                                  fg_color=btn_color, text_color="white" if i != self.current_page else "#000000",
+                                  font=("Arial", 11, "bold"), 
+                                  command=lambda p=i: self.go_to_page(p))
+            p_btn.pack(side="left", padx=4); self.page_buttons.append(p_btn)
 
     def go_to_page(self, page_num): self.current_page = page_num; self.load_full_table()
     def next_page(self): self.current_page += 1; self.load_full_table()
