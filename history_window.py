@@ -1,8 +1,9 @@
 import customtkinter as ctk
 from tkinter import ttk
 import math
+import os
 from datetime import datetime, timedelta
-from database import get_connection  
+from database import get_connection
 
 try:
     from tkcalendar import Calendar
@@ -147,17 +148,18 @@ class HistoryWindow(ctk.CTkToplevel):
     def load_full_table(self, is_initial=False):
         try:
             conn = get_connection(); cur = conn.cursor()
+            SCHEMA = os.getenv("DB_SCHEMA", "latihan")
             if not is_initial and self.filter_start:
-                cur.execute("SELECT COUNT(*) FROM latihan.barcode WHERE created_at BETWEEN %s AND %s", (self.filter_start, self.filter_end))
+                cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.barcode WHERE created_at BETWEEN %s AND %s", (self.filter_start, self.filter_end))
             else:
-                cur.execute("SELECT COUNT(*) FROM latihan.barcode")
+                cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.barcode")
             total_data = cur.fetchone()[0]
             total_pages = math.ceil(total_data / self.rows_per_page) if total_data > 0 else 1
             offset = (self.current_page - 1) * self.rows_per_page
             if not is_initial and self.filter_start:
-                cur.execute("SELECT id, kode_barcode, created_at FROM latihan.barcode WHERE created_at BETWEEN %s AND %s ORDER BY id DESC LIMIT %s OFFSET %s", (self.filter_start, self.filter_end, self.rows_per_page, offset))
+                cur.execute(f"SELECT id, kode_barcode, created_at FROM {SCHEMA}.barcode WHERE created_at BETWEEN %s AND %s ORDER BY id DESC LIMIT %s OFFSET %s", (self.filter_start, self.filter_end, self.rows_per_page, offset))
             else:
-                cur.execute("SELECT id, kode_barcode, created_at FROM latihan.barcode ORDER BY id DESC LIMIT %s OFFSET %s", (self.rows_per_page, offset))
+                cur.execute(f"SELECT id, kode_barcode, created_at FROM {SCHEMA}.barcode ORDER BY id DESC LIMIT %s OFFSET %s", (self.rows_per_page, offset))
             rows = cur.fetchall()
             for i in self.tree.get_children(): self.tree.delete(i)
             for index, r in enumerate(rows):

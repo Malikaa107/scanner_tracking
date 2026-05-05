@@ -7,9 +7,13 @@ from datetime import datetime
 from database import simpan_data, get_connection
 from history_window import HistoryWindow
 from api_server import start_api_server_in_thread
+from dotenv import load_dotenv
+
+# Load variabel dari file .env
+load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
-NODE_RED_URL = "http://127.0.0.1:1880/update_plc"
+NODE_RED_URL = os.getenv("NODE_RED_URL", "http://127.0.0.1:1880/update_plc")
 
 class AppScanner(ctk.CTk):
     def __init__(self): 
@@ -102,7 +106,8 @@ class AppScanner(ctk.CTk):
     def load_sidebar_history(self):
         try:
             conn = get_connection(); cur = conn.cursor() 
-            cur.execute(f"SELECT kode_barcode FROM latihan.barcode ORDER BY id DESC LIMIT {self.limit_sidebar}")
+            SCHEMA = os.getenv("DB_SCHEMA", "latihan")
+            cur.execute(f"SELECT kode_barcode FROM {SCHEMA}.barcode ORDER BY id DESC LIMIT {self.limit_sidebar}")
             rows = cur.fetchall()
             self.history_display.configure(state="normal")
             self.history_display.delete("1.0", "end")
@@ -114,7 +119,8 @@ class AppScanner(ctk.CTk):
     def cek_ke_database(self, barcode):
         try:
             conn = get_connection(); cur = conn.cursor()
-            query = "SELECT nama_rawmaterial FROM latihan.master_data WHERE kode_sap = %s"
+            SCHEMA = os.getenv("DB_SCHEMA", "latihan")
+            query = f"SELECT nama_rawmaterial FROM {SCHEMA}.master_data WHERE kode_sap = %s"
             cur.execute(query, (barcode,))
             data = cur.fetchone()
             cur.close(); conn.close()

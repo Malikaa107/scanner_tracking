@@ -1,13 +1,20 @@
 import psycopg2
+import os
+from dotenv import load_dotenv
+
+# Load environment variables dari file .env
+load_dotenv()
 
 # 1. Konfigurasi Database
 DB_CONFIG = { 
-    "host": "localhost",
-    "database": "postgres", 
-    "user": "postgres",
-    "password": "",
-    "port": "5432"
+    "host": os.getenv("DB_HOST", "localhost"),
+    "database": os.getenv("DB_NAME", "postgres"), 
+    "user": os.getenv("DB_USER", "postgres"),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "port": os.getenv("DB_PORT", "5432")
 }
+
+SCHEMA = os.getenv("DB_SCHEMA", "latihan")
 
 def get_connection():
     return psycopg2.connect(**DB_CONFIG)
@@ -17,7 +24,7 @@ def simpan_data(teks):
     try:
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("INSERT INTO latihan.barcode (kode_barcode) VALUES (%s)", (teks,))
+        cur.execute(f"INSERT INTO {SCHEMA}.barcode (kode_barcode) VALUES (%s)", (teks,))
         conn.commit()
         cur.close()
         conn.close()
@@ -34,7 +41,7 @@ def cek_master_data(barcode):
         cur = conn.cursor()
         
         # Mencari nama material dan merk di tabel master_data
-        query = "SELECT nama_rawmaterial, merk_type FROM latihan.master_data WHERE kode_sap = %s"
+        query = f"SELECT nama_rawmaterial, merk_type FROM {SCHEMA}.master_data WHERE kode_sap = %s"
         cur.execute(query, (barcode,))
         
         result = cur.fetchone() # Mengambil 1 baris data
@@ -52,8 +59,8 @@ def tambah_master_data(kode_sap, nama, target_menit):
         conn = get_connection()
         cur = conn.cursor()
         # Query disesuaikan dengan database master data 
-        query = """
-            INSERT INTO latihan.master_data (kode_sap, nama_rawmaterial, "Target_menit") 
+        query = f"""
+            INSERT INTO {SCHEMA}.master_data (kode_sap, nama_rawmaterial, "Target_menit") 
             VALUES (%s, %s, %s)
         """
         cur.execute(query, (kode_sap, nama, target_menit))
@@ -77,8 +84,8 @@ def get_all_history(limit=50, offset=0):
                 m.nama_rawmaterial, 
                 m.merk_type, 
                 b.created_at 
-            FROM latihan.barcode b
-            LEFT JOIN latihan.master_data m ON b.kode_barcode = m.kode_sap
+            FROM {SCHEMA}.barcode b
+            LEFT JOIN {SCHEMA}.master_data m ON b.kode_barcode = m.kode_sap
             ORDER BY b.created_at DESC 
             LIMIT %s OFFSET %s
         """

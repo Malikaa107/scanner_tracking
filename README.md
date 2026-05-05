@@ -1,6 +1,6 @@
 # Scanner Tracking
 
-Aplikasi desktop Python untuk scan barcode dan menyimpan historinya ke PostgreSQL, dengan tambahan API FastAPI agar data dapat diakses dari frontend web.
+Aplikasi desktop Python untuk scan barcode dan menyimpan historinya ke PostgreSQL, dengan tambahan API FastAPI agar data dapat diakses dari frontend web secara bersamaan.
 
 ## Requirements
 
@@ -12,101 +12,86 @@ Aplikasi desktop Python untuk scan barcode dan menyimpan historinya ke PostgreSQ
   - `created_at`
 - Tabel `latihan.master_data` dengan kolom `kode_sap`, `nama_rawmaterial`, dan `merk_type`
 
-## Install
+## Instalasi
 
-1. Buka terminal di folder proyek:
+1. Buka terminal di folder proyek ini.
 
-```powershell
-cd D:\Something\Mayora\scanner_tracking
-```
-
-2. Install dependency:
+2. Install dependency yang dibutuhkan:
 
 ```powershell
-py -3 -m pip install -r requirement.txt
+pip install -r requirement.txt
 ```
 
-Jika `py` tidak berfungsi, gunakan:
+*(Jika perintah `pip` tidak dikenali, pastikan Python sudah ter-install dan terdaftar di dalam PATH environment variabel, atau gunakan perintah `py -m pip install -r requirement.txt` / `python -m pip install -r requirement.txt`)*
+
+## Menjalankan Aplikasi
+
+Aplikasi telah diperbarui sehingga ketika antarmuka GUI (Desktop) dijalankan, server API (FastAPI) juga otomatis berjalan di latar belakang (thread terpisah).
+
+### Opsi 1: Menjalankan GUI + API Bersamaan (Utama)
 
 ```powershell
-python -m pip install -r requirement.txt
+python App_scanner.py
 ```
+*(Bisa juga dengan `py App_scanner.py`)*
 
-## Menjalankan aplikasi
+Aplikasi desktop (Sistem Scanner Formulasi) akan terbuka dan secara bersamaan server API akan siap menerima *request* di `http://127.0.0.1:5678`.
 
-### GUI + API bersamaan
+### Opsi 2: Hanya Menjalankan API Saja (Tanpa Layar)
 
+Jika Anda hanya membutuhkan backend API untuk diakses web frontend tanpa membuka jendela aplikasi Desktop:
 ```powershell
-py App_scanner.py
+python api_server.py
 ```
 
-Aplikasi desktop akan terbuka dan server API akan berjalan di `http://127.0.0.1:5678`.
-
-### Hanya API saja
-
-```powershell
-py api_server.py
-```
-
-## Endpoint API
+## Endpoint API (Base URL: http://127.0.0.1:5678)
 
 1. `GET /api/health`
-   - Cek apakah server API hidup.
+   - Berfungsi untuk mengecek apakah server API hidup.
 
 2. `POST /api/scan`
-   - Body JSON:
+   - **Body JSON:**
      ```json
      {
        "kode_barcode": "123456"
      }
      ```
-   - Fungsi: validasi barcode, simpan ke tabel `latihan.barcode`, dan kembalikan data master material.
+   - **Fungsi:** Validasi barcode, menyimpannya ke tabel `latihan.barcode` di database, dan mengembalikan data master material. Dapat digunakan untuk mensimulasikan proses scan dari alat eksternal atau *frontend*.
 
 3. `GET /api/masterdata/{kode_sap}`
-   - Contoh: `/api/masterdata/123456`
-   - Fungsi: ambil `nama_rawmaterial` dan `merk_type` dari `latihan.master_data`.
+   - **Contoh:** `/api/masterdata/123456`
+   - **Fungsi:** Mengambil detail informasi raw material (contohnya `nama_rawmaterial` dan `merk_type`) dari tabel `latihan.master_data`.
 
 4. `GET /api/history`
-   - Contoh tanpa filter: `/api/history?limit=50&page=1`
-   - Contoh dengan rentang waktu:
+   - **Contoh tanpa filter:** `/api/history?limit=50&page=1`
+   - **Contoh dengan rentang waktu:**
      `/api/history?start=2026-04-01%2000:00:00&end=2026-04-30%2023:59:59&limit=15&page=1`
-   - contoh payload
-      {
-        "total": 3,
-        "page": 1,
-        "limit": 10,
-        "rows": [
-          {
-              "id": 3,
-              "kode_barcode": "12345678",
-              "created_at": "2026-04-30T11:47:51.027179"
-          },
-        ]
-      }
-   - Fungsi: ambil histori scan, mendukung paging dan filter tanggal.
+   - **Contoh Response Payload:**
+     ```json
+     {
+       "total": 3,
+       "page": 1,
+       "limit": 10,
+       "rows": [
+         {
+             "id": 3,
+             "kode_barcode": "12345678",
+             "created_at": "2026-04-30T11:47:51.027179"
+         }
+       ]
+     }
+     ```
+   - **Fungsi:** Mengambil histori scan barcode dari database. Telah mendukung *pagination* (halaman) dan *filtering* berdasarkan rentang tanggal-waktu.
 
-## Catatan integrasi frontend
+## Catatan Integrasi Frontend
 
-- Jalankan `App_scanner.py` jika ingin tetap menggunakan GUI dan API bersama-sama.
-- Frontend web bisa memanggil endpoint API di `http://127.0.0.1:5678`.
-- Pastikan konfigurasi database di `database.py` sudah benar.
+- Saat ini, cukup jalankan `App_scanner.py` untuk mengaktifkan UI Scanner yang akan dipakai oleh operator dan sekaligus menghidupkan server API untuk web frontend.
+- Aplikasi web (React.js, Vue, dll) bisa mengkonsumsi endpoint-endpoint yang berjalan lokal di alamat `http://127.0.0.1:5678`.
+- Pastikan konfigurasi *host*, *user*, dan *password* database di file `database.py` sudah sesuai dengan pengaturan server database aktif Anda.
 
-Saat ini `api_server.py` sudah menyediakan:
-
-- `create_scan` untuk menambahkan scan baru
-- `get_masterdata` untuk mengambil data master material
-- `get_history` untuk mengambil histori scan
-
-fitur yang belum sama dengan GUI untuk API:
-
-- Sudah:
-  - scan/create data baru
-  - mengambil detail master data
-  - mengambil histori terbaru
-  - paging dan filter rentang tanggal di endpoint history
-
-- Belum sepenuhnya sama dengan GUI:
-  - fitur "shift" GUI belum otomatis disediakan sebagai endpoint khusus
-  - filter katakanlah berdasarkan jenis shift dapat diimplementasikan dengan query tanggal
-
-Jadi, `api_server.py` sudah cukup untuk integrasi create/get ke frontend web, tetapi jika ingin fitur history berbasis shift otomatis, bisa ditambahkan endpoint khusus lagi.
+### Status Fungsionalitas API:
+- ✅ Menambah/Simpan data pemindaian baru (`POST /api/scan`).
+- ✅ Mengambil detail material / Master Data (`GET /api/masterdata/...`).
+- ✅ Mengambil riwayat terbaru (`GET /api/history`).
+- ✅ Paging dan filter waktu pada riwayat.
+- 🚧 **Belum tersedia Endpoint Khusus Shift**: Saat ini logika pemilihan shift yang ada pada aplikasi lama belum dibuatkan endpoint spesifik di API. Namun, frontend dapat mengakali hal ini dengan mengirimkan parameter query tanggal dan jam kerja (`start` & `end`) ke dalam endpoint riwayat biasa.

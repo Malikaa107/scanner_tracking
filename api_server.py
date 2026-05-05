@@ -2,7 +2,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from database import get_connection, simpan_data, cek_master_data, tambah_master_data
 import uvicorn
+import os
 from fastapi.middleware.cors import CORSMiddleware
+import threading
 
 app = FastAPI(title="Scanner Tracking API")
 
@@ -35,24 +37,28 @@ def get_history(limit: int = 10, page: int = 1):
         cur = conn.cursor()
         
         offset = (page - 1) * limit
+        SCHEMA = os.getenv("DB_SCHEMA", "latihan")
         
         # Gunakan petik dua "Target_menit" jika di Postgres namanya ada huruf kapital 
-        query = """
+        query = f"""
             SELECT 
                 b.id, 
                 b.kode_barcode, 
                 b.waktu,
                 m.nama_rawmaterial,
                 m."Target_menit"
-            FROM latihan.barcode b 
-            LEFT JOIN latihan.master_data m ON b.kode_barcode = m.kode_sap
+            FROM {SCHEMA}.barcode b 
+            LEFT JOIN {SCHEMA}.master_data m ON b.kode_barcode = m.kode_sap
             ORDER BY b.id DESC LIMIT %s OFFSET %s
         """
         cur.execute(query, (limit, offset))
         rows = cur.fetchall()
         
-        cur.execute("SELECT COUNT(*) FROM latihan.barcode")
+        cur.execute(f"SELECT COUNT(*) FROM {SCHEMA}.barcode")
         total = cur.fetchone()[0]
+
+
+        
         
         cur.close()
         conn.close()
@@ -113,6 +119,13 @@ def create_masterdata(payload: MasterDataRequest):
         raise HTTPException(status_code=500, detail="Gagal menyimpan ke database master") 
             
     return {"status": "success", "message": "Data master berhasil ditambahkan!"}
+
+def run_server():
+    uvicorn.run(app, host="127.0.0.1", port=5678, log_level="info")
+
+def start_api_server_in_thread():
+    api_thread = threading.Thread(target=run_server, daemon=True)
+    api_thread.start()
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=5678, log_level="info")
