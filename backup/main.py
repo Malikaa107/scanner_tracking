@@ -206,7 +206,7 @@ class AppScanner(ctk.CTk): #kerangka utama
         try:
             conn = psycopg2.connect(**DB_CONFIG); cur = conn.cursor()
             
-            # 1. Hitung total data untuk pagination
+            # 1. Hitung total data untuk pagination 
             if not is_initial and self.filter_start:
                 cur.execute("SELECT COUNT(*) FROM latihan.barcode WHERE created_at BETWEEN %s AND %s", (self.filter_start, self.filter_end))
             else:

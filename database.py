@@ -28,9 +28,7 @@ def simpan_data(teks):
 
 # Pengecekan ke Master Data
 def cek_master_data(barcode):
-
    # Mengambil data material dari tabel master_data berdasarkan kode_sap.
-
     try:
         conn = get_connection()
         cur = conn.cursor()
@@ -48,3 +46,47 @@ def cek_master_data(barcode):
     except Exception as e:
         print(f"Error cek_master_data: {e}")
         return None
+
+def tambah_master_data(kode_sap, nama, target_menit):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        # Query disesuaikan dengan database master data 
+        query = """
+            INSERT INTO latihan.master_data (kode_sap, nama_rawmaterial, "Target_menit") 
+            VALUES (%s, %s, %s)
+        """
+        cur.execute(query, (kode_sap, nama, target_menit))
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"Error: {e}")
+        return False
+
+# Tambah Fungsi Untuk Menampilkan History Dengan Nama Barang
+def get_all_history(limit=50, offset=0):
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        query = """
+            SELECT 
+                b.id, 
+                b.kode_barcode, 
+                m.nama_rawmaterial, 
+                m.merk_type, 
+                b.created_at 
+            FROM latihan.barcode b
+            LEFT JOIN latihan.master_data m ON b.kode_barcode = m.kode_sap
+            ORDER BY b.created_at DESC 
+            LIMIT %s OFFSET %s
+        """
+        cur.execute(query, (limit, offset))
+        result = cur.fetchall()
+        cur.close()
+        conn.close()
+        return result
+    except Exception as e:
+        print(f"Error get_all_history: {e}")
+        return []
