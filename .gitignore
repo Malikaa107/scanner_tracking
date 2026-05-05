@@ -7,3 +7,14 @@ __pycache__/
 venv/
 .env
 env/
+
+# Hasil build PyInstaller (Executable)
+build/
+dist/
+*.spec
+
+# Dependencies NodeJS
+node_modules/
+
+# Folder backup manual Anda (karena git sudah jadi backup)
+backup/
