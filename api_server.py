@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from database import get_connection, simpan_data, cek_master_data, tambah_master_data
+from database import get_connection
 import uvicorn
 import os
 from fastapi.middleware.cors import CORSMiddleware
