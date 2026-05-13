@@ -18,7 +18,7 @@ DB_CONFIG = {
 SCHEMA = os.getenv("DB_SCHEMA", "qc")
 
 def get_connection():
-    # Membuka koneksi ke PostgreSQL
+    # Membuka koneksi postgresql 
     return psycopg2.connect(**DB_CONFIG)
 
 # Alur 1 : ambil daftar job
@@ -45,30 +45,31 @@ def get_jobs_pending():
 
 # alur 2 & 3 : ambil bahan baku dan hitung kebutuhan 
 def get_job_materials(job_id):
-    # Mengambil detail material dan menghitung total_kebutuhan (qty_std * target_qty)
     try:
         conn = get_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        query = f"""
+        
+        # master_resep_item (item resep) dan master_resep (nama resep)
+        query = """
             SELECT 
-                d.id,
-                d.kode_sap,
-                m.nama_rawmaterial,
-                d.qty_standard,
-                d.is_scan,
-                (d.qty_standard * j.target_qty) AS total_kebutuhan
-            FROM {SCHEMA}.master_resep_detail d
-            JOIN {SCHEMA}.master_data m ON d.kode_sap = m.kode_sap
-            JOIN {SCHEMA}.formulasi_joblist j ON j."resepId" = d."resepId"
+                mi.sap_rm AS kode_sap,
+                mi.nama_bahan_baku AS nama,
+                -- Di gambar ada kolom 'no_scan', kita balik logikanya untuk 'is_scan'
+                -- Jika no_scan FALSE (0), maka is_scan TRUE (1)
+                NOT mi.no_scan AS is_scan,
+                (mi.qty_standard * j.target_qty) AS target_kg
+            FROM qc.master_resep_item mi
+            JOIN qc.formulasi_joblist j ON j."resepId" = mi."resepId"
             WHERE j.id = %s
         """
+        
         cur.execute(query, (job_id,))
         result = cur.fetchall()
         cur.close()
         conn.close()
         return result
     except Exception as e:
-        print(f"Error get_job_materials: {e}")
+        print(f"Error Database Detail: {e}")
         return []
 
 # ALUR 5: Validasi pallet  dari (masterlist_rm)
@@ -104,7 +105,7 @@ def validate_pallet(barcode_id, kode_sap_resep):
 
 # ALUR 6: Catat pemakaian dan kurangi stok (kg) 
 def catat_usage_masterlist(job_id, barcode_id, qty_pakai, kode_sap):
-    # Update tabel usage dan kurangi kolom KG di masterlist_rm 
+    # Update tabel usage dan kurangi kolom Kg di masterlist_rm 
     conn = get_connection()
     cur = conn.cursor()
     try:
