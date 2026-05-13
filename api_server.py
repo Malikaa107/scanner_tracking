@@ -39,7 +39,7 @@ def get_history(limit: int = 10, page: int = 1):
         offset = (page - 1) * limit
         SCHEMA = os.getenv("DB_SCHEMA", "latihan")
         
-        # Gunakan petik dua "Target_menit" jika di Postgres namanya ada huruf kapital 
+        # Gunakan petik dua "Target_menit" 
         query = f"""
             SELECT 
                 b.id, 
