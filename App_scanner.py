@@ -22,20 +22,20 @@ class JoblistSelector(ctk.CTkFrame):
         self.setup_ui()
 
     def setup_ui(self):
-        # 1. Hapus total (WAJIB)
+        # 1. Hapus total 
         for widget in self.winfo_children():
             widget.destroy()
 
-        # 2. Main container full navy
+        # 2. Main container
         self.main_container = ctk.CTkFrame(self, fg_color="#0f172a", corner_radius=0)
         self.main_container.pack(fill="both", expand=True)
 
-        # 3. HEADER (Pastikan pady=0 agar tidak ada jarak ke atas)
+        # 3. HEADER
         self.header = ctk.CTkFrame(self.main_container, height=130, corner_radius=0, fg_color="#1e3d59")
-        self.header.pack(side="top", fill="x", pady=0) # <--- pady=0 agar mepet ke atas window
+        self.header.pack(side="top", fill="x", pady=0) 
 
         self.content_area = ctk.CTkFrame(self.main_container, fg_color="transparent")
-        self.content_area.pack(fill="both", expand=True, padx=40, pady=(0)) # <--- Jarak atas 0!
+        self.content_area.pack(fill="both", expand=True, padx=40, pady=(0)) 
 
         ctk.CTkLabel(self.content_area, text="Joblist Formulasi", 
                      font=("Arial", 28, "bold"), text_color="white").pack(anchor="w", pady=(20, 10))
@@ -49,7 +49,7 @@ class JoblistSelector(ctk.CTkFrame):
         # Header Baris Tabel
         header_row = ctk.CTkFrame(self.table_frame, fg_color="#334155", height=40)
         header_row.pack(fill="x", padx=10, pady=(10, 5))
-        header_row.pack_propagate(False) # Agar height tetap 40
+        header_row.pack_propagate(False)
         
         headers = [
             ("NO", 50), ("NOMOR JOB", 180), ("TANGGAL", 150), 
@@ -91,10 +91,10 @@ class JoblistSelector(ctk.CTkFrame):
                 row, text=btn_text, width=120, height=32, 
                 fg_color=btn_color,
                 font=("Arial", 12, "bold"),
-                command=lambda j=job: self.start_job(j) # Ganti ke start_job agar pindah ke scanner
+                command=lambda j=job: self.start_job(j) 
             ).pack(side="left", padx=10)
             
-    def get_all_jobs_from_db(self): # Sesuaikan nama dengan yang dipanggil di selector
+    def get_all_jobs_from_db(self): 
         conn = None
         try:
             conn = get_connection()
@@ -125,7 +125,7 @@ class JoblistSelector(ctk.CTkFrame):
             return []
             
         finally:
-            # 3. Selalu tutup koneksi agar database tidak 'hang' karena terlalu banyak session
+            # 3. Selalu tutup koneksi
             if conn:
                 conn.close()
 
@@ -242,7 +242,7 @@ class AppScanner(ctk.CTk):
                 barcode,                  # Barcode pallet
                 material['sap_rm'],       # Kode SAP
                 material['nama_bahan_baku'], 
-                material['target_qty'],   # Nilai ini yang akan menambah angka di Web
+                material['target_qty'],   # Nilai ini yang akan menambah angka di Web 
                 self.current_batch, 
                 "Admin"
             )
@@ -321,7 +321,7 @@ class AppScanner(ctk.CTk):
             print(f"Error Database saat ambil Joblist: {e}")
             return []
     def show_joblist_selector(self):
-        # 1. Bersihkan layar scanner sebelumnya (PENTING!)
+        # 1. Bersihkan layar scanner sebelumnya
         for widget in self.main_container.winfo_children():
             widget.destroy()
 
@@ -375,7 +375,6 @@ class AppScanner(ctk.CTk):
 
         # 7. Looping Baris Data
         for job in jobs:
-            # Sesuai data yang Anda tunjukkan di DBeaver (faa79cb3...)
             # Gunakan .get() dengan fallback jika kolom berbeda
             val_status = job.get('status', 0) 
             job_no = job.get('job_no') or job.get('nomor_job') or "N/A"
@@ -399,7 +398,7 @@ class AppScanner(ctk.CTk):
             row.pack(fill="x", pady=5, padx=10)
             row.pack_propagate(False)
 
-            # Isi Data ke Label (Posisi X harus sama dengan Header)
+            # Isi Data ke Label (Posisi X harus sama dengan Header) 
             ctk.CTkLabel(row, text=job_no, font=("Arial", 13, "bold"), text_color="white").place(x=20, y=18)
             ctk.CTkLabel(row, text=str(job.get('created_at', job.get('tanggal', ''))), font=("Arial", 12), text_color="#94a3b8").place(x=200, y=18)
             ctk.CTkLabel(row, text=resep, font=("Arial", 12), text_color="white").place(x=350, y=18)
@@ -555,7 +554,7 @@ class AppScanner(ctk.CTk):
         # 4. PANGGIL MENU UTAMA
         if hasattr(self, 'setup_ui'):
             self.setup_ui()
-        elif hasattr(self, 'tampilkan_joblist'): # Coba nama umum lainnya
+        elif hasattr(self, 'tampilkan_joblist'):
             self.tampilkan_joblist()
         else:
             print("DEBUG: Fungsi Tidak Ditemukan!")
