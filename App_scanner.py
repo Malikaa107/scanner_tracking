@@ -94,28 +94,40 @@ class JoblistSelector(ctk.CTkFrame):
                 command=lambda j=job: self.start_job(j) # Ganti ke start_job agar pindah ke scanner
             ).pack(side="left", padx=10)
             
-    def fetch_jobs_from_db(self):
+    def get_all_jobs_from_db(self): # Sesuaikan nama dengan yang dipanggil di selector
+        conn = None
         try:
             conn = get_connection()
-            # Memakai RealDictCursor membuat 'results' otomatis jadi list of dictionary
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+            # 2. Query dengan JOIN untuk mendapatkan Nama Resep dari tabel Master
             query = """
                 SELECT 
-                    j.id, j.nomor_job, j.tanggal, j."resepId", 
-                    j.target_qty, j.status, r.nama_resep 
+                    j.id, 
+                    j.nomor_job, 
+                    j.tanggal, 
+                    j."resepId", 
+                    j.target_qty, 
+                    j.status, 
+                    r.nama_resep 
                 FROM qc.formulasi_joblist j 
                 LEFT JOIN qc.master_resep r ON j."resepId" = r.id 
                 WHERE j.status IN (0, 1) 
                 ORDER BY j.status ASC, j.tanggal DESC
             """
+            
             cursor.execute(query)
             results = cursor.fetchall()
-            conn.close()
             return results
+
         except Exception as e:
-            print(f"Database Error: {e}")
+            print(f"❌ Database Error saat tarik Joblist: {e}")
             return []
+            
+        finally:
+            # 3. Selalu tutup koneksi agar database tidak 'hang' karena terlalu banyak session
+            if conn:
+                conn.close()
 
 class AppScanner(ctk.CTk):
     def __init__(self):
@@ -123,19 +135,86 @@ class AppScanner(ctk.CTk):
         self.title("Sistem Scanner Formulasi")
         self.geometry("1400x850")
         self.configure(fg_color="#0f172a")
+        
+        # koneksi database 
+        try:
+            import psycopg2 # Gunakan psycopg2 untuk PostgreSQL
+            from psycopg2.extras import RealDictCursor
+            
+            self.db = psycopg2.connect(
+                host="localhost",
+                database="postgres",
+                user="postgres",     
+                password="",         
+                port="5432"         
+            )
+            self.cursor = self.db.cursor(cursor_factory=RealDictCursor)
+            print("Database Connected Successfully!")
+        except Exception as e:
+            print(f"Database Connection Error: {e}")
+
+        # CONTAINER UTAMA
         self.main_container = ctk.CTkFrame(self, fg_color="#0f172a", corner_radius=0)
         self.main_container.pack(fill="both", expand=True)
         
-        self.current_batch_num = 1
+    
+        self.is_scanning = False
+        self.current_batch = 1
         self.completed_batches = []
         self.batch_active = False
         self.current_selected_sap = None
         self.selected_job_no = None
+        self.current_job_id = None      
         self.material_resep = []
         self.scanned_materials = set()
+        
+        self.current_material_data = {
+            'sap_rm': '',
+            'nama_bahan_baku': '',
+            'target_qty': 0.0
+        }
 
         self.show_joblist_selector()
         self.bind("<Escape>", lambda e: self.konfirmasi_stop() if self.is_scanning else None)
+
+    def eksekusi_keluar(self, window_target):
+        try:
+            window_target.destroy()
+        except:
+            pass
+        
+        self.is_scanning = False
+        
+        # Bersihkan layar utama
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+            
+        # Panggil fungsi tampilkan joblist
+        self.tampilkan_joblist()
+
+    def tampilkan_joblist(self):
+        # 1. Bersihkan ulang untuk memastikan
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+
+        print("DEBUG: Menampilkan Joblist")
+
+        # 2. Header Judul
+        ctk.CTkLabel(self.main_container, text="Joblist Formulasi", 
+                     font=("Arial", 28, "bold"), text_color="white").pack(pady=(20, 10), padx=30, anchor="w")
+
+        # 3. Buat Frame Tabel
+        container_tabel = ctk.CTkScrollableFrame(self.main_container, fg_color="transparent")
+        container_tabel.pack(fill="both", expand=True, padx=30, pady=10)
+
+        # 4. Ambil Data (Ganti self.all_jobs dengan sumber data kamu)
+        # Jika error get_all_jobs muncul lagi, pastikan data jobs sudah terisi di awal
+        if hasattr(self, 'all_jobs') and self.all_jobs:
+            for index, job in enumerate(self.all_jobs):
+                self.buat_baris_tabel_custom(container_tabel, job, index)
+        else:
+            ctk.CTkLabel(container_tabel, text="Data Job tidak ditemukan atau kosong", 
+                         font=("Arial", 14)).pack(pady=20)
 
     def manual_check_handler(self, kode_sap):
         # 1. Logika internal (tambahkan ke scanned_materials)
@@ -147,45 +226,34 @@ class AppScanner(ctk.CTk):
         # 3. Refresh UI
         self.update_sidebar_lists()
 
-    def save_material_usage(self, sap_code):
+    def save_material_usage(self, barcode):
         try:
-            # 1. Cari data material dari list resep yang sudah dimuat
-            material_data = next((item for item in self.material_resep if item['kode_sap'] == sap_code), None)
+            # Gunakan data material yang sedang aktif di-scan
+            material = self.current_material_data 
             
-            if not material_data:
-                print(f"Data untuk SAP {sap_code} tidak ditemukan di memori.")
-                return
-
-            conn = get_connection()
-            cursor = conn.cursor()
-
-            # 2. Gunakan tanda kutip dua "" untuk nama kolom yang ada huruf besarnya
+            # Query INSERT ke tabel sesuai ERD: formulasi_material_usage
             query = """
-                INSERT INTO qc.formulasi_material_usage 
-                ("joblistId", sap_rm, nama_bahan_baku, qty_dipakai, satuan, batch_ke, scan_oleh)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO "qc"."formulasi_material_usage" 
+                ("joblistId", "barcode_pallet", "sap_rm", "nama_bahan_baku", "qty_dipakai", "batch", "scan_at", "scan_oleh") 
+                VALUES (%s, %s, %s, %s, %s, %s, NOW(), %s)
             """
-            
             values = (
-                self.current_job_id,
-                material_data['kode_sap'],
-                material_data['nama'],
-                material_data['target_qty'],
-                material_data['satuan'],
-                self.current_batch_num,
-                "OPERATOR_SCAN" # Bisa diganti sesuai user login
+                self.current_job_id,     
+                barcode,                  # Barcode pallet
+                material['sap_rm'],       # Kode SAP
+                material['nama_bahan_baku'], 
+                material['target_qty'],   # Nilai ini yang akan menambah angka di Web
+                self.current_batch, 
+                "Admin"
             )
 
-            cursor.execute(query, values)
-            conn.commit()
-            cursor.close()
-            conn.close()
+            self.cursor.execute(query, values)
+            self.db.commit()
+            print(f"DEBUG: Berhasil sinkron")
             
-            print(f"Berhasil simpan material: {material_data['nama']}")
-
         except Exception as e:
-            # Jika masih error, print ini untuk debug
-            print(f"Gagal Simpan: {e}")
+            print(f"Error Database: {e}")
+            self.db.rollback()
 
     def show_toast_notification(self, message, color="green"):
         # Buat label notifikasi kecil di atas atau bawah
@@ -233,8 +301,6 @@ class AppScanner(ctk.CTk):
             # Gunakan RealDictCursor agar kita bisa memanggil data dengan nama kolom
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
-            # WAJIB: Gunakan tanda kutip ganda pada "resepId" karena PostgreSQL 
-            # bersifat case-sensitive untuk nama kolom dengan huruf kapital.
             query = """
                 SELECT 
                     id, 
@@ -251,97 +317,111 @@ class AppScanner(ctk.CTk):
             conn.close()
             return jobs
         except Exception as e:
-            # Ini akan memunculkan pesan error spesifik di terminal jika ada masalah
+            # message error
             print(f"Error Database saat ambil Joblist: {e}")
             return []
-
     def show_joblist_selector(self):
-        # 1. Bersihkan layar scanner sebelumnya
+        # 1. Bersihkan layar scanner sebelumnya (PENTING!)
         for widget in self.main_container.winfo_children():
             widget.destroy()
 
-        # 2. Reset status
+        # 2. Reset status aplikasi
         self.is_scanning = False
+        self.batch_active = False
         self.main_container.configure(fg_color="#0f172a") 
 
-        # 3. Gambar ulang Joblist (Judul, Header Tabel, Data)
-        title_lbl = ctk.CTkLabel(self.main_container, text="Joblist Formulasi", 
-                                 font=("Arial", 28, "bold"), text_color="white")
+        # 3. Header Judul
+        title_lbl = ctk.CTkLabel(
+            self.main_container, 
+            text="Daftar Joblist Formulasi", 
+            font=("Arial", 28, "bold"), 
+            text_color="white"
+        )
         title_lbl.pack(anchor="w", padx=40, pady=(30, 10))
 
-        # 4. Header Tabel
+        # 4. Header Tabel (Kolom Statis)
         header_bar = ctk.CTkFrame(self.main_container, fg_color="#1e293b", height=45, corner_radius=5)
         header_bar.pack(fill="x", padx=40, pady=10)
         header_bar.pack_propagate(False)
 
-        # Label Header Kolom
         headers = [
             ("NOMOR JOB", 20), ("TANGGAL", 200), ("RESEP TARGET", 350), 
             ("TARGET QTY", 550), ("STATUS", 700), ("ACTION", 900)
         ]
         for text, x_pos in headers:
             ctk.CTkLabel(
-                header_bar, 
-                text=text, 
-                font=("Arial", 11, "bold"), 
-                text_color="#94a3b8"
+                header_bar, text=text, font=("Arial", 11, "bold"), text_color="#94a3b8"
             ).place(x=x_pos, y=10)
 
-        # 5. Ambil data dari database
+        # 5. Area Scrollable untuk List Job
+        scroll_frame = ctk.CTkScrollableFrame(
+            self.main_container, 
+            fg_color="transparent", 
+            label_text=""
+        )
+        scroll_frame.pack(fill="both", expand=True, padx=30, pady=5)
+
+        # 6. Ambil data dari database
         jobs = self.get_all_jobs_from_db() 
 
         if not jobs:
             ctk.CTkLabel(
-                self.main_container, 
-                text="TIDAK ADA JOBLIST AKTIF", 
+                scroll_frame, 
+                text="TIDAK ADA JOBLIST AKTIF DI DATABASE", 
                 font=("Arial", 16), 
                 text_color="#475569"
             ).pack(pady=100)
             return
 
-        # 6. Looping Baris Data
+        # 7. Looping Baris Data
         for job in jobs:
-            val_status = job.get('status')
+            # Sesuai data yang Anda tunjukkan di DBeaver (faa79cb3...)
+            # Gunakan .get() dengan fallback jika kolom berbeda
+            val_status = job.get('status', 0) 
+            job_no = job.get('job_no') or job.get('nomor_job') or "N/A"
+            resep = job.get('nama_produk') or job.get('nama_resep') or "No Name"
             
-            # Logika Status: 2 = SELESAI, lainnya = PENDING
+            # Logika Status: 2 = SELESAI, 1 = PROSES, 0 = PENDING
             if val_status == 2:
                 status_txt, status_clr = "SELESAI", "#22c55e"
                 btn_txt, btn_clr = "Lihat Detail", "#334155"
                 hvr_clr = "#475569"
+                # Jika sudah selesai, mungkin tombolnya didisable atau buka detail
+                cmd = lambda j=job: self.start_job(j)
             else:
                 status_txt, status_clr = "PENDING", "#facc15"
                 btn_txt, btn_clr = "PILIH JOB", "#1d4ed8"
                 hvr_clr = "#2563eb"
+                cmd = lambda j=job: self.start_job(j)
 
             # Frame Baris (Row)
-            row = ctk.CTkFrame(self.main_container, fg_color="#1e293b", height=60, corner_radius=8)
-            row.pack(fill="x", pady=5, padx=40)
+            row = ctk.CTkFrame(scroll_frame, fg_color="#1e293b", height=60, corner_radius=8)
+            row.pack(fill="x", pady=5, padx=10)
             row.pack_propagate(False)
 
-            # --- Isi Data (Place untuk posisi presisi) ---
-            # Nomor Job
-            ctk.CTkLabel(row, text=job.get('nomor_job', 'N/A'), font=("Arial", 13, "bold"), text_color="white").place(x=20, y=18)
-            # Tanggal
-            ctk.CTkLabel(row, text=str(job.get('tanggal', '')), font=("Arial", 12), text_color="#94a3b8").place(x=200, y=18)
-            # Resep Target
-            ctk.CTkLabel(row, text=job.get('nama_resep', 'RESEP'), font=("Arial", 12), text_color="white").place(x=350, y=18)
-            # Target Qty
-            target_qty = f"{job.get('target_qty', '1')} Batch"
+            # Isi Data ke Label (Posisi X harus sama dengan Header)
+            ctk.CTkLabel(row, text=job_no, font=("Arial", 13, "bold"), text_color="white").place(x=20, y=18)
+            ctk.CTkLabel(row, text=str(job.get('created_at', job.get('tanggal', ''))), font=("Arial", 12), text_color="#94a3b8").place(x=200, y=18)
+            ctk.CTkLabel(row, text=resep, font=("Arial", 12), text_color="white").place(x=350, y=18)
+            
+            target_qty = f"{job.get('target_batch', '1')} Batch"
             ctk.CTkLabel(row, text=target_qty, font=("Arial", 12), text_color="white").place(x=550, y=18)
-            # Status Label
+            
             ctk.CTkLabel(row, text=status_txt, text_color=status_clr, font=("Arial", 12, "bold")).place(x=700, y=18)
 
             # Tombol Action
             ctk.CTkButton(
-                row, 
-                text=btn_txt, 
-                fg_color=btn_clr,
-                hover_color=hvr_clr,
-                width=120,
-                height=32,
-                font=("Arial", 12, "bold"),
-                command=lambda j=job: self.start_job(j)
+                row, text=btn_txt, fg_color=btn_clr, hover_color=hvr_clr,
+                width=120, height=32, font=("Arial", 12, "bold"),
+                command=cmd
             ).place(x=900, y=14)
+
+    def show_detail(self, job):
+         # Fungsi ini dipanggil saat tombol Lihat Detail diklik
+        print(f"Membuka detail untuk job: {job.get('nomor_job')}")
+        # Sementara tampilkan popup saja agar tidak error
+        from tkinter import messagebox
+        messagebox.showinfo("Detail Job", f"Nomor Job: {job.get('nomor_job')}\nStatus: Selesai")
 
     def prepare_scanning_area(self, job_id, job_no, target_qty, resep_id):
         self.selected_job_id = job_id  # Menyimpan id dari database
@@ -349,7 +429,6 @@ class AppScanner(ctk.CTk):
         self.target_qty_total = int(target_qty)
         self.is_scanning = True
     
-        # Gunakan job_id yang diterima dari parameter, bukan job_id_asli 
         self.material_resep = self.fetch_materials_by_resep(job_id) 
         
         self.setup_scanner_ui()
@@ -465,20 +544,21 @@ class AppScanner(ctk.CTk):
             window_target.destroy()
         except:
             pass
+        
         # 2. Matikan status scanning
         self.is_scanning = False
-        # 3. Kembali ke Menu Utama
+        
+        # 3. Bersih layar
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+
+        # 4. PANGGIL MENU UTAMA
         if hasattr(self, 'setup_ui'):
             self.setup_ui()
-        elif hasattr(self, 'create_main_menu'):
-            self.create_main_menu()
-        elif hasattr(self, 'init_gui'):
-            self.init_gui()
+        elif hasattr(self, 'tampilkan_joblist'): # Coba nama umum lainnya
+            self.tampilkan_joblist()
         else:
-            # Jika semua gagal, paksa bersihkan layar saja
-            print("DEBUG: Fungsi menu utama tidak ditemukan!")
-            for widget in self.main_container.winfo_children():
-                widget.destroy()
+            print("DEBUG: Fungsi Tidak Ditemukan!")
 
     def start_batch_logic(self):
         self.batch_active = True
@@ -502,14 +582,27 @@ class AppScanner(ctk.CTk):
     def process_scan(self, barcode_data): 
         print(f"Memproses scan: {barcode_data}")
         
-        # Lanjutkan dengan logika simpan database
-        valid_sap_codes = [item['kode_sap'] for item in self.material_resep]
-        if barcode_data in valid_sap_codes:
+        # 1. Cari data material lengkap dari list resep berdasarkan barcode/SAP
+        material_terpilih = next((item for item in self.material_resep if item['kode_sap'] == barcode_data), None)
+        
+        if material_terpilih:
+            self.current_material_data = {
+                'sap_rm': material_terpilih.get('kode_sap') or material_terpilih.get('sap_rm'),
+                'nama_bahan_baku': material_terpilih.get('nama_bahan_baku') or material_terpilih.get('nama_bahan'),
+                'target_qty': material_terpilih.get('target_qty') or material_terpilih.get('qty_dipakai')
+            }
+            
+            # 3. Tandai sudah di-scan
             self.scanned_materials.add(barcode_data)
+            
+            # 4. Jalankan fungsi simpan ke database (formulasi_material_usage)
             self.save_material_usage(barcode_data)
+            
+            # 5. Update tampilan
             self.update_sidebar_lists()
+            self.show_toast_notification("DATA TERSIMPAN KE DATABASE!", color="green")
         else:
-            self.show_toast_notification("Material tidak cocok!", color="red")
+            self.show_toast_notification("Material tidak cocok dengan resep!", color="red")
 
     def manual_check_handler(self, barcode):
         if not self.batch_active: return 
@@ -688,29 +781,6 @@ class AppScanner(ctk.CTk):
             command=lambda p=pop: self.eksekusi_keluar(p) 
         ).pack(side="left", padx=10)
 
-    def eksekusi_keluar(self, window_target):
-        # 1. Tutup popup konfirmasi
-        try:
-            window_target.destroy()
-        except:
-            pass
-        
-        # 2. Matikan status scanning
-        self.is_scanning = False
-        
-        # 3. Kembali ke Menu Utama
-        if hasattr(self, 'setup_ui'):
-            self.setup_ui()
-        elif hasattr(self, 'create_main_menu'):
-            self.create_main_menu()
-        elif hasattr(self, 'init_gui'):
-            self.init_gui()
-        else:
-            # Jika semua gagal, paksa bersihkan layar saja
-            print("DEBUG: Fungsi menu utama tidak ditemukan!")
-            for widget in self.main_container.winfo_children():
-                widget.destroy()
-            # Panggil fungsi manapun yang kamu tahu isinya nampilin Joblist
 
     def update_clock(self):
         if self.is_scanning:
