@@ -113,7 +113,7 @@ class JoblistSelector(ctk.CTkFrame):
                 FROM qc.formulasi_joblist j 
                 LEFT JOIN qc.master_resep r ON j."resepId" = r.id 
                 WHERE j.status IN (0, 1) 
-                ORDER BY j.status ASC, j.tanggal DESC
+                ORDER BY j.status ASC, j.tanggal DESC 
             """
             
             cursor.execute(query)
@@ -272,25 +272,44 @@ class AppScanner(ctk.CTk):
     def fetch_materials_by_resep(self, job_id):
         try:
             conn = get_connection()
+            # Menggunakan RealDictCursor agar hasil query berupa dictionary
             cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            
+            # Query tetap mengambil data asli dari database
             query = """
-                        SELECT 
-                            mi.sap_rm AS kode_sap, 
-                            mi.nama_bahan_baku AS nama,
-                            NOT mi.no_scan AS is_scan,  -- Jika no_scan=True, maka is_scan=False
-                            (mi.qty_standard * j.target_qty) AS target_qty,
-                            CASE
-                                WHEN mi.nama_bahan_baku ILIKE '%%AIR%%' THEN 'Liter' 
-                                ELSE 'Kg'
-                            END AS satuan 
-                        FROM qc.master_resep_item mi
-                        JOIN qc.formulasi_joblist j ON j."resepId" = mi."resepId"
-                        WHERE j.id = %s 
-                    """
+                SELECT 
+                    mi.sap_rm AS kode_sap, 
+                    mi.nama_bahan_baku AS nama,
+                    mi.no_scan,
+                    (mi.qty_standard * j.target_qty) AS target_qty,
+                    CASE
+                        WHEN mi.nama_bahan_baku ILIKE '%%AIR%%' THEN 'Liter' 
+                        ELSE 'Kg'
+                    END AS satuan 
+                FROM qc.master_resep_item mi
+                JOIN qc.formulasi_joblist j ON j."resepId" = mi."resepId"
+                WHERE j.id = %s 
+            """
             cursor.execute(query, (job_id,))
-            materials = cursor.fetchall()
+            raw_materials = cursor.fetchall()
+            
+            # proses data logika nama bahan baku
+            final_materials = []
+            for item in raw_materials:
+                if "AIR" in item['nama'].upper():
+                    item['is_scan'] = False
+                else:
+                    # Jika bukan air, ikuti logika: jika no_scan False maka is_scan True
+                    item['is_scan'] = not item['no_scan']
+                
+                final_materials.append(item)
+            
             conn.close()
-            return materials
+            
+            # Simpan ke attribute agar Sidebar bisa membaca
+            self.material_resep = final_materials
+            return final_materials
+            
         except Exception as e:
             print(f"Error Database: {e}")
             return []
@@ -320,6 +339,7 @@ class AppScanner(ctk.CTk):
             # message error
             print(f"Error Database saat ambil Joblist: {e}")
             return []
+        
     def show_joblist_selector(self):
         # 1. Bersihkan layar scanner sebelumnya
         for widget in self.main_container.winfo_children():
@@ -508,7 +528,7 @@ class AppScanner(ctk.CTk):
         
         ctk.CTkLabel(self.sidebar_right, text="CHECKLIST", text_color="#fbbf24", font=("Arial", 15, "bold")).pack(pady=15)
         self.scroll_sidebar_right = ctk.CTkScrollableFrame(self.sidebar_right, fg_color="transparent")
-        self.scroll_sidebar_right.pack(expand=True, fill="both", padx=10, pady=5)
+        self.scroll_sidebar_right.pack(expand=True, fill="both", padx=10, pady=5) 
 
         # area tengah
         self.main_area = ctk.CTkFrame(self.content_container, corner_radius=20, fg_color="#1e293b") 
@@ -535,7 +555,7 @@ class AppScanner(ctk.CTk):
         self.entry_barcode.bind('<KeyRelease>', self.auto_scan_handler) 
         self.entry_barcode.bind('<Return>', lambda e: self.auto_scan_handler(e, force=True))
         
-        self.update_sidebar_lists()
+        self.update_sidebar_lists() 
 
     def eksekusi_keluar(self, window_target):
         # 1. Tutup popup konfirmasi
@@ -717,7 +737,7 @@ class AppScanner(ctk.CTk):
                 
                 if is_done: 
                     cb.select()
-                cb.pack(side="right", padx=10) # Padx ditambah agar tidak mepet garis 
+                cb.pack(side="right", padx=10) 
 
     def start_job(self, job_data):
         job_id_db = job_data.get('id')
