@@ -1,149 +1,449 @@
+import os
+import logging
+from contextlib import contextmanager
+from datetime import datetime
+from typing import Any
+
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import os
 from dotenv import load_dotenv
+from app_logging import setup_logging
 
-# Load environment variables
 load_dotenv()
 
-# 1. Konfigurasi Database
-DB_CONFIG = { 
+DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
-    "database": os.getenv("DB_NAME", "postgres"), 
+    "database": os.getenv("DB_NAME", "postgres"),
     "user": os.getenv("DB_USER", "postgres"),
     "password": os.getenv("DB_PASSWORD", ""),
-    "port": os.getenv("DB_PORT", "5432")
+    "port": os.getenv("DB_PORT", "5432"),
 }
-
 SCHEMA = os.getenv("DB_SCHEMA", "qc")
 
+setup_logging()
+logger = logging.getLogger(__name__)
+
+
 def get_connection():
-    # Membuka koneksi postgresql 
+    """Buka koneksi baru ke PostgreSQL berdasarkan DB_CONFIG."""
     return psycopg2.connect(**DB_CONFIG)
 
-# Alur 1 : ambil daftar job
-def get_jobs_pending():
-    # Mengambil daftar job aktif (Pending=0 / Progress=1)
-    try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        query = f"""
-            SELECT j.id, j.nomor_job, j.tanggal, j."resepId", j.target_qty, j.status, r.nama_resep
-            FROM {SCHEMA}.formulasi_joblist j
-            LEFT JOIN {SCHEMA}.master_resep r ON j."resepId" = r.id
-            WHERE j.status IN (0, 1)
-            ORDER BY j.tanggal DESC
-        """
-        cur.execute(query)
-        result = cur.fetchall()
-        cur.close()
-        conn.close()
-        return result
-    except Exception as e:
-        print(f"Error get_jobs_pending: {e}")
-        return []
 
-# alur 2 & 3 : ambil bahan baku dan hitung kebutuhan 
-def get_job_materials(job_id):
-    try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        
-        # master_resep_item (item resep) dan master_resep (nama resep)
-        query = """
-            SELECT 
-                mi.sap_rm AS kode_sap,
-                mi.nama_bahan_baku AS nama,
-                -- Di gambar ada kolom 'no_scan', kita balik logikanya untuk 'is_scan'
-                -- Jika no_scan FALSE (0), maka is_scan TRUE (1)
-                NOT mi.no_scan AS is_scan,
-                (mi.qty_standard * j.target_qty) AS target_kg
-            FROM qc.master_resep_item mi
-            JOIN qc.formulasi_joblist j ON j."resepId" = mi."resepId"
-            WHERE j.id = %s
-        """
-        
-        cur.execute(query, (job_id,))
-        result = cur.fetchall()
-        cur.close()
-        conn.close()
-        return result
-    except Exception as e:
-        print(f"Error Database Detail: {e}")
-        return []
-
-# ALUR 5: Validasi pallet  dari (masterlist_rm)
-def validate_pallet(barcode_id, kode_sap_resep): 
-    # Validasi pallet berdasarkan ID di tabel masterlist_rm
-    try:
-        conn = get_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        query = f"""
-            SELECT id, kode_sap, nama_raw_material, kg 
-            FROM {SCHEMA}.masterlist_rm 
-            WHERE id = %s
-        """
-        cur.execute(query, (barcode_id,))
-        pallet = cur.fetchone()
-        conn.close()
-
-        if not pallet:
-            return {"status": False, "message": "Barcode tidak terdaftar!"}
-        
-        if pallet['kode_sap'] != kode_sap_resep:
-            return {
-                "status": False, 
-                "message": f"SALAH BAHAN!\nResep: {kode_sap_resep}\nScan: {pallet['kode_sap']}"
-            }
-        
-        if pallet['kg'] <= 0:
-            return {"status": False, "message": "Stok Pallet Kosong (0 kg)!"}
-            
-        return {"status": True, "data": pallet}
-    except Exception as e:
-        return {"status": False, "message": str(e)}
-
-# ALUR 6: Catat pemakaian dan kurangi stok (kg) 
-def catat_usage_masterlist(job_id, barcode_id, qty_pakai, kode_sap):
-    # Update tabel usage dan kurangi kolom Kg di masterlist_rm 
+@contextmanager
+def db_cursor(dict_cursor: bool = False):
+    """Context manager cursor + auto commit/rollback."""
     conn = get_connection()
-    cur = conn.cursor()
+    cursor_factory = RealDictCursor if dict_cursor else None
+    cur = conn.cursor(cursor_factory=cursor_factory)
     try:
-        # 1. Catat History
-        query_ins = f"""
-            INSERT INTO {SCHEMA}.formulasi_material_usage (job_id, kode_sap, barcode_pallet, qty_pakai, waktu)
-            VALUES (%s, %s, %s, %s, NOW())
-        """
-        cur.execute(query_ins, (job_id, kode_sap, str(barcode_id), qty_pakai))
-
-        # 2. Potong kg di masterlist_rm
-        query_upd = f"UPDATE {SCHEMA}.masterlist_rm SET kg = kg - %s WHERE id = %s"
-        cur.execute(query_upd, (qty_pakai, barcode_id))
-
+        yield conn, cur
         conn.commit()
-        return True
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        print(f"Error catat_usage: {e}")
-        return False
+        logger.exception("Database transaction failed and rolled back")
+        raise
     finally:
         cur.close()
         conn.close()
 
-# ALUR 7: Update status job
-def update_job_status(job_id, status_code):
-    # Mengubah status job (0:Pending, 1:Progress, 2:Selesai)
+
+# -----------------------------
+# Scanner Formulasi Core
+# -----------------------------
+#  list_joblist dipakai get_jobs_pending + 
+def list_joblist():
+    """Ambil joblist aktif (status 0/1) untuk halaman pemilihan job."""
+    query = f"""
+        SELECT
+            j.id,
+            j.nomor_job,
+            j.target_qty,
+            j.status,
+            j."resepId"
+        FROM {SCHEMA}.formulasi_joblist j
+        WHERE j.status IN (0, 1)
+        ORDER BY j.status ASC, j.tanggal DESC, j.id DESC
+    """
+    with db_cursor(dict_cursor=True) as (_, cur):
+        cur.execute(query)
+        return cur.fetchall()
+
+
+def _get_job_row(cur, joblist_id: int):
+    """Ambil 1 baris job dan kembalikan selalu dalam format dict."""
+    query = f"""
+        SELECT id, nomor_job, target_qty, status, "resepId"
+        FROM {SCHEMA}.formulasi_joblist
+        WHERE id = %s
+    """
+    cur.execute(query, (joblist_id,))
+    row = cur.fetchone()
+    if row is None:
+        return None
+
+    # Jika cursor biasa, hasilnya tuple -> normalisasi ke dict.
+    if isinstance(row, tuple):
+        return {
+            "id": row[0],
+            "nomor_job": row[1],
+            "target_qty": row[2],
+            "status": row[3],
+            "resepId": row[4],
+        }
+
+    # Jika cursor RealDictCursor, hasil sudah dict-like.
+    return row
+
+
+def _is_sap_in_resep(cur, resep_id, sap_rm: str):
+    query = f"""
+        SELECT 1
+        FROM {SCHEMA}.master_resep_item
+        WHERE "resepId" = %s AND sap_rm = %s
+        LIMIT 1
+    """
+    cur.execute(query, (resep_id, sap_rm))
+    return cur.fetchone() is not None
+
+
+def _is_all_batches_completed(cur, joblist_id: int, resep_id, total_batch: int):
+    query = f"""
+        WITH usage_per_batch AS (
+            SELECT
+                u."sap_rm",
+                u."batch",
+                COALESCE(SUM(u."qty_dipakai"), 0) AS qty_pakai
+            FROM {SCHEMA}.formulasi_material_usage u
+            WHERE u."joblistId" = %s
+            GROUP BY u."sap_rm", u."batch"
+        ),
+        batch_range AS (
+            SELECT generate_series(1, %s) AS batch_ke
+        )
+        SELECT COUNT(*) AS belum_selesai
+        FROM {SCHEMA}.master_resep_item mi
+        CROSS JOIN batch_range br
+        LEFT JOIN usage_per_batch upb
+            ON upb."sap_rm" = mi.sap_rm
+           AND upb."batch" = br.batch_ke
+        WHERE mi."resepId" = %s
+          AND COALESCE(upb.qty_pakai, 0) < mi.qty_standard
+    """
+    cur.execute(query, (joblist_id, total_batch, resep_id))
+    result = cur.fetchone()
+    if isinstance(result, tuple):
+        not_done = result[0]
+    else:
+        not_done = result.get("belum_selesai", 0)
+    return not_done == 0
+
+
+def running_batch_joblist(joblist_id: int, batch_ke: int):
+    """Ambil kebutuhan per item untuk batch tertentu + progress usage batch."""
+    if batch_ke < 1:
+        raise ValueError("batchKe harus >= 1")
+
+    with db_cursor(dict_cursor=True) as (_, cur):
+        job = _get_job_row(cur, joblist_id)
+        if not job:
+            raise ValueError("Joblist tidak ditemukan")
+
+        if batch_ke > job["target_qty"]:
+            raise ValueError("batchKe melebihi target_qty joblist")
+
+        materials_query = f"""
+            SELECT
+                mi.sap_rm,
+                mi.nama_bahan_baku,
+                mi.qty_standard,
+                mi.no_scan,
+                COALESCE(u.qty_pakai, 0) AS qty_terpakai
+            FROM {SCHEMA}.master_resep_item mi
+            LEFT JOIN (
+                SELECT
+                    "sap_rm",
+                    SUM("qty_dipakai") AS qty_pakai
+                FROM {SCHEMA}.formulasi_material_usage
+                WHERE "joblistId" = %s AND "batch" = %s
+                GROUP BY "sap_rm"
+            ) u ON u."sap_rm" = mi.sap_rm
+            WHERE mi."resepId" = %s
+            ORDER BY mi.sap_rm ASC
+        """
+        cur.execute(materials_query, (joblist_id, batch_ke, job["resepId"]))
+        rows = cur.fetchall()
+
+    items = []
+    for row in rows:
+        # Rule UI:
+        # - nama material mengandung "AIR" => checklist manual
+        # - no_scan = true => checklist manual
+        nama_upper = str(row["nama_bahan_baku"] or "").upper()
+        is_air_material = "AIR" in nama_upper
+        is_no_scan = bool(row["no_scan"])
+
+        items.append(
+            {
+                "sap_rm": row["sap_rm"],
+                "nama_bahan_baku": row["nama_bahan_baku"],
+                "qty_standard": float(row["qty_standard"] or 0),
+                "qty_terpakai": float(row["qty_terpakai"] or 0),
+                "sisa": max(float(row["qty_standard"] or 0) - float(row["qty_terpakai"] or 0), 0.0),
+                "is_scan": not (is_air_material or is_no_scan),
+            }
+        )
+
+    return {
+        "joblist": {
+            "id": job["id"],
+            "nomor_job": job["nomor_job"],
+            "target_qty": job["target_qty"],
+            "status": job["status"],
+            "resepId": job["resepId"],
+            "batchKe": batch_ke,
+        },
+        "items": items,
+    }
+
+
+def update_material_usage(
+    joblist_id: int,
+    barcode_pallet: str,
+    sap_rm: str,
+    batch: int,
+    qty_dipakai: float,
+    scan_at: datetime,
+    scan_oleh: str,
+):
+    """Update usage material (qty_dipakai + scan_at) dan status job otomatis."""
+    if batch < 1:
+        raise ValueError("batch wajib >= 1")
+
+    with db_cursor() as (_, cur):
+        job = _get_job_row(cur, joblist_id)
+        if not job:
+            raise ValueError("joblistId tidak ditemukan")
+
+        if batch > int(job["target_qty"]):
+            raise ValueError("batch melebihi target_qty")
+
+        if not _is_sap_in_resep(cur, job["resepId"], sap_rm):
+            raise ValueError("sap_rm tidak ada di resep joblist")
+
+        update_query = f"""
+            UPDATE {SCHEMA}.formulasi_material_usage
+            SET
+                "qty_dipakai" = %s,
+                "scan_at" = %s
+            WHERE "joblistId" = %s
+              AND "sap_rm" = %s
+              AND "batch" = %s
+        """
+        cur.execute(
+            update_query,
+            (qty_dipakai, scan_at, joblist_id, sap_rm, batch),
+        )
+        updated_rows = cur.rowcount
+
+        if updated_rows == 0:
+            raise ValueError("Data usage tidak ditemukan untuk di-update")
+
+        # status 0 -> 1 saat scan pertama
+        if int(job["status"]) == 0:
+            cur.execute(
+                f"UPDATE {SCHEMA}.formulasi_joblist SET status = 1 WHERE id = %s",
+                (joblist_id,),
+            )
+            job["status"] = 1
+
+        # semua batch selesai -> 2
+        if _is_all_batches_completed(cur, joblist_id, job["resepId"], int(job["target_qty"])):
+            cur.execute(
+                f"UPDATE {SCHEMA}.formulasi_joblist SET status = 2 WHERE id = %s",
+                (joblist_id,),
+            )
+            job["status"] = 2
+
+        return {
+            "saved": updated_rows > 0,
+            "job_status": int(job["status"]),
+            "joblist_id": joblist_id,
+            "batch": batch,
+            "sap_rm": sap_rm,
+            "scan_at": scan_at.isoformat(),
+            "qty_dipakai": qty_dipakai,
+        }
+
+
+# -----------------------------
+# Compatibility helpers for UI lama
+# -----------------------------
+def get_jobs_pending():
+    """Wrapper kompatibilitas untuk kode lama."""
     try:
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute(f"""
-            UPDATE {SCHEMA}.formulasi_joblist 
-            SET status = %s, "updatedAt" = NOW() 
-            WHERE id = %s
-        """, (status_code, job_id))
-        conn.commit()
-        conn.close()
+        return list_joblist()
+    except Exception as exc:
+        logger.exception("Error get_jobs_pending")
+        return []
+
+
+def get_all_jobs():
+    """Wrapper kompatibilitas untuk kode lama."""
+    try:
+        return list_joblist()
+    except Exception as exc:
+        logger.exception("Error get_all_jobs")
+        return []
+
+
+def get_job_materials(job_id: int):
+    """Wrapper kompatibilitas: map struktur data lama dari running_batch_joblist."""
+    try:
+        data = running_batch_joblist(job_id, 1)
+        result = []
+        for item in data["items"]:
+            result.append(
+                {
+                    "kode_sap": item["sap_rm"],
+                    "nama": item["nama_bahan_baku"],
+                    "target_qty": item["qty_standard"],  # kebutuhan per batch
+                    "satuan": "Kg",
+                    "is_scan": item["is_scan"],
+                }
+            )
+        return result
+    except Exception as exc:
+        logger.exception("Error get_job_materials for job_id=%s", job_id)
+        return []
+
+
+# -----------------------------
+# Existing API features (tetap)
+# -----------------------------
+def update_job_status(job_id: int, status_code: int):
+    query = f"""
+        UPDATE {SCHEMA}.formulasi_joblist
+        SET status = %s
+        WHERE id = %s
+    """
+    try:
+        with db_cursor() as (_, cur):
+            cur.execute(query, (status_code, job_id))
         return True
-    except Exception as e:
-        print(f"Error update_job_status: {e}")
+    except Exception as exc:
+        logger.exception("Error update_job_status job_id=%s status=%s", job_id, status_code)
+        return False
+
+
+def get_history(limit: int, offset: int):
+    rows_query = f"""
+        SELECT
+            b.id,
+            b.kode_barcode,
+            b.waktu,
+            m.nama_rawmaterial,
+            m."Target_menit"
+        FROM {SCHEMA}.barcode b
+        LEFT JOIN {SCHEMA}.master_data m ON b.kode_barcode = m.kode_sap
+        ORDER BY b.id DESC
+        LIMIT %s OFFSET %s
+    """
+    total_query = f"SELECT COUNT(*) FROM {SCHEMA}.barcode"
+
+    with db_cursor() as (_, cur):
+        cur.execute(rows_query, (limit, offset))
+        rows = cur.fetchall()
+        cur.execute(total_query)
+        total = cur.fetchone()[0]
+    return rows, total
+
+
+def cek_master_data(kode_sap: str):
+    query = f"SELECT nama_rawmaterial, COALESCE(\"Target_menit\", 0) FROM {SCHEMA}.master_data WHERE kode_sap = %s"
+    try:
+        with db_cursor() as (_, cur):
+            cur.execute(query, (kode_sap,))
+            return cur.fetchone()
+    except Exception as exc:
+        logger.exception("Error cek_master_data kode_sap=%s", kode_sap)
+        return None
+
+
+def tambah_master_data(kode_sap: str, nama_rawmaterial: str, target_menit: int = 0):
+    query = f"""
+        INSERT INTO {SCHEMA}.master_data (kode_sap, nama_rawmaterial, "Target_menit")
+        VALUES (%s, %s, %s)
+        ON CONFLICT (kode_sap)
+        DO UPDATE SET
+            nama_rawmaterial = EXCLUDED.nama_rawmaterial,
+            "Target_menit" = EXCLUDED."Target_menit"
+    """
+    try:
+        with db_cursor() as (_, cur):
+            cur.execute(query, (kode_sap, nama_rawmaterial, target_menit))
+        return True
+    except Exception as exc:
+        logger.exception("Error tambah_master_data kode_sap=%s", kode_sap)
+        return False
+
+
+def simpan_data(kode_barcode: str):
+    query = f"INSERT INTO {SCHEMA}.barcode (kode_barcode, waktu) VALUES (%s, NOW())"
+    try:
+        with db_cursor() as (_, cur):
+            cur.execute(query, (kode_barcode,))
+        return True
+    except Exception as exc:
+        logger.exception("Error simpan_data kode_barcode=%s", kode_barcode)
+        return False
+
+
+def validate_pallet(barcode_id, kode_sap_resep):
+    query = f"""
+        SELECT id, kode_sap, nama_raw_material, kg
+        FROM {SCHEMA}.masterlist_rm
+        WHERE id = %s
+    """
+    try:
+        with db_cursor(dict_cursor=True) as (_, cur):
+            cur.execute(query, (barcode_id,))
+            pallet = cur.fetchone()
+
+        if not pallet:
+            return {"status": False, "message": "Barcode tidak terdaftar!"}
+
+        if pallet["kode_sap"] != kode_sap_resep:
+            return {
+                "status": False,
+                "message": f"SALAH BAHAN!\\nResep: {kode_sap_resep}\\nScan: {pallet['kode_sap']}",
+            }
+
+        if pallet["kg"] <= 0:
+            return {"status": False, "message": "Stok Pallet Kosong (0 kg)!"}
+
+        return {"status": True, "data": pallet}
+    except Exception as exc:
+        logger.exception("Error validate_pallet barcode_id=%s kode_sap_resep=%s", barcode_id, kode_sap_resep)
+        return {"status": False, "message": str(exc)}
+
+
+def catat_usage_masterlist(job_id, barcode_id, qty_pakai, kode_sap):
+    insert_query = f"""
+        INSERT INTO {SCHEMA}.formulasi_material_usage (job_id, kode_sap, barcode_pallet, qty_pakai, waktu)
+        VALUES (%s, %s, %s, %s, NOW())
+    """
+    update_query = f"UPDATE {SCHEMA}.masterlist_rm SET kg = kg - %s WHERE id = %s"
+
+    try:
+        with db_cursor() as (_, cur):
+            cur.execute(insert_query, (job_id, kode_sap, str(barcode_id), qty_pakai))
+            cur.execute(update_query, (qty_pakai, barcode_id))
+        return True
+    except Exception as exc:
+        logger.exception(
+            "Error catat_usage_masterlist job_id=%s barcode_id=%s kode_sap=%s",
+            job_id,
+            barcode_id,
+            kode_sap,
+        )
         return False

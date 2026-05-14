@@ -2,7 +2,12 @@ import customtkinter as ctk
 from tkcalendar import Calendar
 from datetime import datetime
 import os
+import logging
+from app_logging import setup_logging
 from database import get_connection
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 class HistoryWindow(ctk.CTkToplevel):
     def __init__(self, parent):
@@ -204,4 +209,5 @@ class HistoryWindow(ctk.CTkToplevel):
             self.total_label.configure(text=f"Total: {self.total_data} Data")
             self.create_pagination_buttons()
             cur.close(); conn.close()
-        except Exception as e: print(f"Error loading data: {e}")
+        except Exception as e:
+            logger.exception("Error loading data history")

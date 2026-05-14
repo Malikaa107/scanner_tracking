@@ -1,5 +1,10 @@
-import psycopg2 
+import logging
+import psycopg2
 import sys
+from app_logging import setup_logging
+
+setup_logging()
+logger = logging.getLogger(__name__)
 
 # 1. Konfigurasi Database PostgreSQL
 db_config = {
@@ -52,6 +57,7 @@ def check_database():
                 print("="*40)
 
             except psycopg2.Error as e:
+                logger.exception("DATABASE ERROR saat validasi barcode=%s", barcode_input)
                 print(f"\n DATABASE ERROR: {e}")
             finally:
                 if conn:
@@ -59,6 +65,7 @@ def check_database():
                     conn.close()
             
     except KeyboardInterrupt:
+        logger.info("Aplikasi masterdata dihentikan oleh user (KeyboardInterrupt)")
         print("\n\n[INFO] Menutup aplikasi.")
         sys.exit()
 
