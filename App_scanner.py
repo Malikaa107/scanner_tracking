@@ -10,6 +10,7 @@ from api_server import start_api_server_in_thread
 from database import (
     get_all_jobs,
     get_job_materials,
+    get_usage_scan_target,
     update_material_usage,
     update_job_status,
 )
@@ -357,11 +358,23 @@ class AppScanner(ctk.CTk):
             self.show_toast_notification("Job belum dipilih", color="red")
             return
 
+        usage_id = None
+        barcode_pallet_value = barcode_data
+
         # Cari item resep yang sap_rm-nya sama dengan barcode hasil scan
         material = next((item for item in self.material_resep if item.get("kode_sap") == barcode_data), None)
         if not material:
-            self.show_toast_notification("Material tidak cocok dengan resep", color="red")
-            return
+            # Fallback: anggap barcode_data adalah formulasi_material_usage.id
+            usage_target = get_usage_scan_target(self.current_job_id, self.current_batch_num, barcode_data)
+            if usage_target:
+                usage_id = usage_target.get("id")
+                barcode_pallet_value = usage_target.get("barcode_pallet") or barcode_data
+                usage_sap = usage_target.get("sap_rm")
+                material = next((item for item in self.material_resep if item.get("kode_sap") == usage_sap), None)
+
+            if not material:
+                self.show_toast_notification("Scan tidak cocok dengan material resep/job aktif", color="red")
+                return
 
         # Simpan konteks material aktif
         self.current_material_data = {
@@ -371,18 +384,19 @@ class AppScanner(ctk.CTk):
         }
 
         # Tandai bahwa material ini sudah discan untuk batch aktif
-        self.scanned_materials.add(barcode_data)
+        self.scanned_materials.add(self.current_material_data["sap_rm"])
 
         # Kirim data usage ke DB (batch wajib, scan_at wajib)
         try:
             update_result = update_material_usage(
                 joblist_id=self.current_job_id,
-                barcode_pallet=barcode_data,
+                barcode_pallet=barcode_pallet_value,
                 sap_rm=self.current_material_data["sap_rm"],
                 batch=self.current_batch_num,
                 qty_dipakai=self.current_material_data["target_qty"],
                 scan_at=datetime.now(),
                 scan_oleh="Admin",
+                usage_id=usage_id,
             )
             is_saved = bool(update_result.get("saved"))
         except Exception as exc:

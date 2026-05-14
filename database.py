@@ -105,6 +105,40 @@ def _is_sap_in_resep(cur, resep_id, sap_rm: str):
     cur.execute(query, (resep_id, sap_rm))
     return cur.fetchone() is not None
 
+def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
+    """Ambil row usage berdasarkan id untuk scan mode UUID usage (pakai cursor aktif)."""
+    query = f"""
+        SELECT
+            id,
+            "joblistId",
+            "sap_rm",
+            "barcode_pallet",
+            "batch"
+        FROM {SCHEMA}.formulasi_material_usage
+        WHERE id = %s
+          AND "joblistId" = %s
+          AND "batch" = %s
+        LIMIT 1
+    """
+    cur.execute(query, (usage_id, joblist_id, batch))
+    row = cur.fetchone()
+    if row is None:
+        return None
+    if isinstance(row, tuple):
+        return {
+            "id": row[0],
+            "joblistId": row[1],
+            "sap_rm": row[2],
+            "barcode_pallet": row[3],
+            "batch": row[4],
+        }
+    return row
+
+def get_usage_scan_target(joblist_id, batch: int, usage_id: str):
+    """Versi publik untuk kebutuhan debug/test di luar transaksi utama."""
+    with db_cursor(dict_cursor=True) as (_, cur):
+        return _get_usage_scan_target(cur, joblist_id, batch, usage_id)
+
 
 def _is_all_batches_completed(cur, joblist_id: int, resep_id, total_batch: int):
     query = f"""
@@ -214,6 +248,7 @@ def update_material_usage(
     qty_dipakai: float,
     scan_at: datetime,
     scan_oleh: str,
+    usage_id: str = None,
 ):
     """Update usage material (qty_dipakai + scan_at) dan status job otomatis."""
     if batch < 1:
@@ -230,19 +265,42 @@ def update_material_usage(
         if not _is_sap_in_resep(cur, job["resepId"], sap_rm):
             raise ValueError("sap_rm tidak ada di resep joblist")
 
-        update_query = f"""
-            UPDATE {SCHEMA}.formulasi_material_usage
-            SET
-                "qty_dipakai" = %s,
-                "scan_at" = %s
-            WHERE "joblistId" = %s
-              AND "sap_rm" = %s
-              AND "batch" = %s
-        """
-        cur.execute(
-            update_query,
-            (qty_dipakai, scan_at, joblist_id, sap_rm, batch),
-        )
+        if usage_id:
+            # Mode scan by usage.id
+            usage_row = _get_usage_scan_target(cur, joblist_id, batch, usage_id)
+            if not usage_row:
+                raise ValueError("ID usage tidak ditemukan untuk job/batch aktif")
+            if usage_row.get("sap_rm") != sap_rm:
+                raise ValueError("ID usage tidak sesuai material resep yang discan")
+
+            update_query = f"""
+                UPDATE {SCHEMA}.formulasi_material_usage
+                SET
+                    "qty_dipakai" = %s,
+                    "scan_at" = %s
+                WHERE id = %s
+                  AND "joblistId" = %s
+                  AND "batch" = %s
+            """
+            cur.execute(
+                update_query,
+                (qty_dipakai, scan_at, usage_id, joblist_id, batch),
+            )
+        else:
+            # Mode lama: update by (joblistId, sap_rm, batch)
+            update_query = f"""
+                UPDATE {SCHEMA}.formulasi_material_usage
+                SET
+                    "qty_dipakai" = %s,
+                    "scan_at" = %s
+                WHERE "joblistId" = %s
+                  AND "sap_rm" = %s
+                  AND "batch" = %s
+            """
+            cur.execute(
+                update_query,
+                (qty_dipakai, scan_at, joblist_id, sap_rm, batch),
+            )
         updated_rows = cur.rowcount
 
         if updated_rows == 0:
@@ -270,6 +328,7 @@ def update_material_usage(
             "joblist_id": joblist_id,
             "batch": batch,
             "sap_rm": sap_rm,
+            "usage_id": usage_id,
             "scan_at": scan_at.isoformat(),
             "qty_dipakai": qty_dipakai,
         }
