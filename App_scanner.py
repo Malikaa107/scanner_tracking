@@ -9,8 +9,8 @@ from app_logging import setup_logging
 from api_server import start_api_server_in_thread
 from database import (
     get_all_jobs,
-    get_job_materials,
     get_usage_scan_target,
+    running_batch_joblist,
     update_material_usage,
     update_job_status,
 )
@@ -63,6 +63,7 @@ class AppScanner(ctk.CTk):
         self.completed_batches = []
         self.material_resep = []
         self.scanned_materials = set()
+        self.all_batches_done = False
 
         # Data material aktif terakhir untuk payload ke DB
         self.current_material_data = {
@@ -176,23 +177,101 @@ class AppScanner(ctk.CTk):
             self.show_toast_notification("Job tidak valid", color="red")
             return
 
-        materials = get_job_materials(job_id)
-        if not materials:
+        self.current_job_id = job_id
+        self.selected_job_no = job_data.get("nomor_job") or "-"
+        self.target_qty_total = max(1, int(job_data.get("target_qty", 1) or 1))
+        resume_state = self._resolve_resume_state(job_id)
+        if not resume_state:
             self.show_toast_notification("Material resep tidak ditemukan", color="red")
             return
 
-        self.current_job_id = job_id
-        self.material_resep = materials
-        self.selected_job_no = job_data.get("nomor_job") or "-"
-        self.target_qty_total = max(1, int(job_data.get("target_qty", 1) or 1))
-        self.current_batch_num = 1
-        self.completed_batches = []
-        self.scanned_materials = set()
+        self.current_batch_num = resume_state["current_batch_num"]
+        self.completed_batches = resume_state["completed_batches"]
+        self.scanned_materials = resume_state["scanned_materials"]
+        self.material_resep = resume_state["material_resep"]
+        self.all_batches_done = resume_state["all_batches_done"]
         self.batch_active = False
         self.is_scanning = True
 
         self.setup_scanner_ui()
+        self._sync_resume_ui_state()
         self.update_clock()
+
+    def _resolve_resume_state(self, job_id: int):
+        """Tentukan batch resume dari DB + daftar item yang sudah selesai di batch aktif."""
+        batch_cache = {}
+        completed_batches = []
+        current_batch_num = 1
+        scanned_materials = set()
+        found_incomplete = False
+        done_codes_by_batch = {}
+
+        for batch_num in range(1, self.target_qty_total + 1):
+            try:
+                batch_data = running_batch_joblist(job_id, batch_num)
+            except Exception:
+                logger.exception("Gagal membaca progress job_id=%s batch=%s", job_id, batch_num)
+                return None
+
+            items = batch_data.get("items", [])
+            batch_cache[batch_num] = items
+            if not items:
+                continue
+
+            done_codes = set()
+            all_done = True
+            for item in items:
+                sap_rm = item.get("sap_rm")
+                qty_standard = float(item.get("qty_standard") or 0.0)
+                qty_terpakai = float(item.get("qty_terpakai") or 0.0)
+                is_done = qty_terpakai >= qty_standard if qty_standard > 0 else True
+                if is_done and sap_rm:
+                    done_codes.add(sap_rm)
+                else:
+                    all_done = False
+
+            if all_done:
+                done_codes_by_batch[batch_num] = done_codes
+                completed_batches.append(f"Batch {batch_num}")
+                continue
+
+            current_batch_num = batch_num
+            scanned_materials = done_codes
+            found_incomplete = True
+            break
+
+        if not found_incomplete:
+            current_batch_num = min(self.target_qty_total, max(1, self.target_qty_total))
+            scanned_materials = done_codes_by_batch.get(current_batch_num, set())
+
+        current_items = batch_cache.get(current_batch_num, [])
+        if not current_items:
+            return None
+
+        material_resep = [
+            {
+                "kode_sap": item.get("sap_rm"),
+                "nama": item.get("nama_bahan_baku"),
+                "target_qty": item.get("qty_standard", 0.0),
+                "satuan": "Kg",
+                "is_scan": item.get("is_scan", True),
+            }
+            for item in current_items
+        ]
+        return {
+            "current_batch_num": current_batch_num,
+            "completed_batches": completed_batches,
+            "scanned_materials": scanned_materials,
+            "material_resep": material_resep,
+            "all_batches_done": len(completed_batches) >= self.target_qty_total,
+        }
+
+    def _sync_resume_ui_state(self):
+        """Sinkronkan UI dengan state resume saat halaman scan dibuka ulang."""
+        if self.all_batches_done:
+            self.result_display.configure(text="ALL BATCH COMPLETED!", text_color="#22c55e")
+            self.btn_batch_start.configure(state="normal", text="FINISH", fg_color="#22c55e", command=self.finish_job)
+            self.entry_barcode.configure(state="disabled")
 
     def setup_scanner_ui(self):
         """Bangun layout halaman scan (header + sidebar + area scan)."""
@@ -383,9 +462,6 @@ class AppScanner(ctk.CTk):
             "target_qty": material.get("target_qty", 0.0),
         }
 
-        # Tandai bahwa material ini sudah discan untuk batch aktif
-        self.scanned_materials.add(self.current_material_data["sap_rm"])
-
         # Kirim data usage ke DB (batch wajib, scan_at wajib)
         try:
             update_result = update_material_usage(
@@ -409,6 +485,8 @@ class AppScanner(ctk.CTk):
             self.show_toast_notification(str(exc), color="red")
             return
 
+        # Tandai selesai hanya jika update DB berhasil
+        self.scanned_materials.add(self.current_material_data["sap_rm"])
         self.update_sidebar_lists()
         self.check_all_materials_completed()
 
@@ -422,7 +500,36 @@ class AppScanner(ctk.CTk):
         if not self.batch_active:
             return
 
-        if kode_sap in self.scanned_materials:
+        material = next((item for item in self.material_resep if item.get("kode_sap") == kode_sap), None)
+        if not material:
+            self.show_toast_notification("Material tidak ditemukan", color="red")
+            return
+
+        is_checked = kode_sap in self.scanned_materials
+        qty_target = float(material.get("target_qty") or 0.0)
+        qty_update = 0.0 if is_checked else qty_target
+
+        try:
+            update_material_usage(
+                joblist_id=self.current_job_id,
+                barcode_pallet=kode_sap or "",
+                sap_rm=kode_sap,
+                batch=self.current_batch_num,
+                qty_dipakai=qty_update,
+                scan_at=datetime.now(),
+                scan_oleh="Admin",
+            )
+        except Exception as exc:
+            logger.exception(
+                "Error manual_check_handler job_id=%s sap_rm=%s batch=%s",
+                self.current_job_id,
+                kode_sap,
+                self.current_batch_num,
+            )
+            self.show_toast_notification(str(exc), color="red")
+            return
+
+        if is_checked:
             self.scanned_materials.remove(kode_sap)
         else:
             self.scanned_materials.add(kode_sap)
