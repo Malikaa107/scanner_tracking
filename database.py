@@ -3,6 +3,7 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -105,8 +106,22 @@ def _is_sap_in_resep(cur, resep_id, sap_rm: str):
     cur.execute(query, (resep_id, sap_rm))
     return cur.fetchone() is not None
 
+def _normalize_uuid(value: Any):
+    """Normalisasi string UUID; return None jika format tidak valid."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return str(UUID(raw))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
 def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
     """Ambil row usage berdasarkan id untuk scan mode UUID usage (pakai cursor aktif)."""
+    usage_uuid = _normalize_uuid(usage_id)
+    if not usage_uuid:
+        return None
+
     query = f"""
         SELECT
             id,
@@ -120,7 +135,7 @@ def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
           AND "batch" = %s
         LIMIT 1
     """
-    cur.execute(query, (usage_id, joblist_id, batch))
+    cur.execute(query, (usage_uuid, joblist_id, batch))
     row = cur.fetchone()
     if row is None:
         return None

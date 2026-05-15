@@ -1,10 +1,9 @@
 import customtkinter as ctk
 from tkcalendar import Calendar
 from datetime import datetime
-import os
 import logging
 from app_logging import setup_logging
-from database import get_connection
+from database import SCHEMA, get_connection
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -63,8 +62,15 @@ class HistoryWindow(ctk.CTkToplevel):
 
         #  TABLE HEADER 
         self.columns = [
-            ("NO", 60), ("BATCH ID", 110), ("NAMA BAHAN", 310), 
-            ("KODE BARCODE", 220), ("WAKTU SCAN", 220), ("MENIT KE-", 110)
+            ("NO", 50),
+            ("JOB", 170),
+            ("BATCH", 70),
+            ("SAP RM", 120),
+            ("NAMA BAHAN", 230),
+            ("QTY", 80),
+            ("BARCODE/USAGE", 180),
+            ("SCAN AT", 170),
+            ("OPERATOR", 100),
         ]
         
         self.table_header_container = ctk.CTkFrame(self, fg_color="transparent")
@@ -190,17 +196,57 @@ class HistoryWindow(ctk.CTkToplevel):
         for widget in self.scroll_frame.winfo_children(): widget.destroy()
         try:
             conn = get_connection(); cur = conn.cursor()
-            schema = os.getenv("DB_SCHEMA", "latihan")
-            cur.execute(f"SELECT COUNT(*) FROM {schema}.barcode")
+            count_query = f"""
+                SELECT COUNT(*)
+                FROM {SCHEMA}.formulasi_material_usage u
+                WHERE u."scan_at" IS NOT NULL
+            """
+            cur.execute(count_query)
             self.total_data = cur.fetchone()[0]
             offset = (self.current_page - 1) * self.rows_per_page
-            query = f"SELECT b.id, 'BATCH-001', m.nama_rawmaterial, b.kode_barcode, b.waktu_scan FROM {schema}.barcode b LEFT JOIN {schema}.master_data m ON b.kode_barcode = m.kode_sap ORDER BY b.id DESC LIMIT %s OFFSET %s"
+
+            query = f"""
+                SELECT
+                    u.id,
+                    COALESCE(j.nomor_job, '-') AS nomor_job,
+                    u."batch",
+                    u."sap_rm",
+                    COALESCE(mi.nama_bahan_baku, '-') AS nama_bahan_baku,
+                    COALESCE(u."qty_dipakai", 0) AS qty_dipakai,
+                    COALESCE(u."barcode_pallet", '-') AS barcode_pallet,
+                    u."scan_at",
+                    COALESCE(u."scan_oleh", '-') AS scan_oleh
+                FROM {SCHEMA}.formulasi_material_usage u
+                LEFT JOIN {SCHEMA}.formulasi_joblist j
+                    ON j.id = u."joblistId"
+                LEFT JOIN {SCHEMA}.master_resep_item mi
+                    ON mi."resepId" = j."resepId"
+                   AND mi.sap_rm = u."sap_rm"
+                WHERE u."scan_at" IS NOT NULL
+                ORDER BY u."scan_at" DESC NULLS LAST, u.id DESC
+                LIMIT %s OFFSET %s
+            """
             cur.execute(query, (self.rows_per_page, offset))
             rows = cur.fetchall()
-            for row in rows:
+
+            base_no = offset + 1
+            for idx, row in enumerate(rows):
                 r_frame = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
                 r_frame.pack(fill="x", pady=1)
-                vals = [str(row[0]), str(row[1]), str(row[2])[:35], str(row[3]), row[4].strftime("%Y-%m-%d %H:%M:%S") if row[4] else "-", "12"]
+
+                usage_id = str(row[0]) if row[0] else "-"
+                barcode_or_usage = str(row[6]) if row[6] and str(row[6]).strip() else usage_id
+                vals = [
+                    str(base_no + idx),
+                    str(row[1]),
+                    str(row[2]),
+                    str(row[3]),
+                    str(row[4])[:32],
+                    f"{float(row[5]):g}",
+                    barcode_or_usage[:24],
+                    row[7].strftime("%Y-%m-%d %H:%M:%S") if row[7] else "-",
+                    str(row[8]),
+                ]
                 for i, val in enumerate(vals):
                     f = ctk.CTkFrame(r_frame, width=self.columns[i][1], height=35, fg_color="transparent", border_width=1, border_color="#334155")
                     f.pack(side="left", padx=1)

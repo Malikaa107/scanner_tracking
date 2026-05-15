@@ -1,14 +1,15 @@
-import os # library interaksi sistem (buat folder, file)
-import logging #library mencatat log (pesan sistem)
-from datetime import datetime # catat waktu 
+import os
+import logging
+from time import monotonic
+from datetime import datetime
 
 import customtkinter as ctk #library ui / tampilan 
 from PIL import Image # untuk mengolah dan menampilkan gambar 
 
-# Menghubungkan ke file lain 
-from app_logging import setup_logging # memanggil fungsi log dari (app_logging.py)
-from api_server import start_api_server_in_thread #menjalankan server API 
-from database import ( # Memanggil fungsi dari database 
+from app_logging import setup_logging
+from api_server import start_api_server_in_thread
+from history_window import HistoryWindow
+from database import (
     get_all_jobs,
     get_usage_scan_target,
     running_batch_joblist,
@@ -55,15 +56,29 @@ class AppScanner(ctk.CTk):
 
     def _reset_scan_state(self):
         """Reset seluruh state runtime saat keluar/mulai job baru."""
-        self.is_scanning = False # penanda apakah layar scanner aktif 
-        self.batch_active = False # penanda apakah proses scan batch sudah dimulai 
-        self.current_job_id = None # ID job dari database 
-        self.selected_job_no = "-" # No job untuk tampilan 
-        self.target_qty_total = 1 # total target batch 
-        self.current_batch_num = 1 # urutan batch saat ini
-        self.completed_batches = [] # daftar batch yg sudah ter scan (riwayat sidebar)
-        self.material_resep = [] # # list material yg harus di scan 
-        self.scanned_materials = set() # penampung kode_sap yg berhasil di scan 
+        pending_after = getattr(self, "scan_debounce_after_id", None)
+        if pending_after is not None:
+            try:
+                self.after_cancel(pending_after)
+            except Exception:
+                logger.debug("scan debounce callback sudah tidak aktif", exc_info=True)
+
+        self.is_scanning = False
+        self.batch_active = False
+        self.current_job_id = None
+        self.selected_job_no = "-"
+        self.target_qty_total = 1
+        self.current_batch_num = 1
+        self.completed_batches = []
+        self.material_resep = []
+        self.scanned_materials = set()
+        self.all_batches_done = False
+        self.scan_debounce_after_id = None
+        self.scan_debounce_ms = 180
+        self.scan_duplicate_guard_ms = 700
+        self.scan_inflight = False
+        self.last_scan_payload = ""
+        self.last_scan_monotonic = 0.0
 
         # Data material aktif terakhir untuk payload ke DB
         self.current_material_data = {
@@ -91,13 +106,26 @@ class AppScanner(ctk.CTk):
         self.is_scanning = False
         self.batch_active = False
 
-        # Judul halaman
+        # Judul halaman + tombol history
+        title_bar = ctk.CTkFrame(self.main_container, fg_color="transparent")
+        title_bar.pack(fill="x", padx=40, pady=(30, 10))
+
         ctk.CTkLabel(
-            self.main_container,
+            title_bar,
             text="Daftar Joblist Formulasi",
             font=("Arial", 28, "bold"),
             text_color="white",
-        ).pack(anchor="w", padx=40, pady=(30, 10))
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            title_bar,
+            text="HISTORY",
+            fg_color="#20C997",
+            width=120,
+            height=36,
+            font=("Arial", 12, "bold"),
+            command=self.open_history_window,
+        ).pack(side="right")
 
         # Header kolom tabel job
         header_bar = ctk.CTkFrame(self.main_container, fg_color="#1e293b", height=45, corner_radius=5)
@@ -334,6 +362,7 @@ class AppScanner(ctk.CTk):
             width=100,
             height=35,
             font=("Arial", 12, "bold"),
+            command=self.open_history_window,
         ).place(relx=0.97, rely=0.65, anchor="ne")
 
         self._build_scanner_body()
@@ -349,6 +378,19 @@ class AppScanner(ctk.CTk):
         except Exception:
             logger.exception("Gagal load logo header dari BASE_DIR=%s", BASE_DIR)
             return 30
+
+    def open_history_window(self):
+        """Buka window history atau fokus ke window yang sudah terbuka."""
+        try:
+            if hasattr(self, "history_window") and self.history_window and self.history_window.winfo_exists():
+                self.history_window.focus_force()
+                self.history_window.lift()
+                return
+
+            self.history_window = HistoryWindow(self)
+        except Exception:
+            logger.exception("Gagal membuka history window")
+            self.show_toast_notification("History gagal dibuka", color="red")
 
     def _build_scanner_body(self):
         """Buat sidebar kiri-kanan dan area scan di tengah."""
@@ -407,12 +449,15 @@ class AppScanner(ctk.CTk):
         )
         self.entry_barcode.pack(pady=0)
 
-        # Event input scanner
+        # Event input scanner: support Enter + debounce saat scanner tidak kirim Enter
         self.entry_barcode.bind("<KeyRelease>", self.auto_scan_handler)
         self.entry_barcode.bind("<Return>", lambda _e: self.auto_scan_handler(force=True))
 
     def start_batch_logic(self):
         """Aktifkan batch saat tombol START ditekan."""
+        self._cancel_scan_debounce()
+        self.scan_inflight = False
+        self.entry_barcode.delete(0, "end")
         self.batch_active = True
         self.btn_batch_start.configure(
             state="disabled",
@@ -424,17 +469,62 @@ class AppScanner(ctk.CTk):
         self.result_display.configure(text="Silahkan Scan Barcode", text_color="#38bdf8")
 
     def auto_scan_handler(self, _event=None, force=False):
-        """Ambil input barcode dan jalankan proses scan."""
+        """Tangani input scanner dengan mode debounce + trigger paksa (Enter)."""
         if not self.batch_active:
+            return
+
+        if force:
+            self._cancel_scan_debounce()
+            self._consume_scan_buffer()
+            return
+
+        self._schedule_scan_debounce()
+
+    def _cancel_scan_debounce(self):
+        """Batalkan callback debounce scan yang masih pending."""
+        if self.scan_debounce_after_id is None:
+            return
+
+        try:
+            self.after_cancel(self.scan_debounce_after_id)
+        except Exception:
+            logger.debug("after_cancel scan debounce gagal/expired", exc_info=True)
+        finally:
+            self.scan_debounce_after_id = None
+
+    def _schedule_scan_debounce(self):
+        """Jadwalkan eksekusi scan setelah input stabil."""
+        self._cancel_scan_debounce()
+        self.scan_debounce_after_id = self.after(self.scan_debounce_ms, self._consume_scan_buffer)
+
+    def _consume_scan_buffer(self):
+        """Proses isi entry barcode yang sudah stabil."""
+        self.scan_debounce_after_id = None
+        if not self.batch_active:
+            return
+        if self.scan_inflight:
             return
 
         barcode_data = self.entry_barcode.get().strip()
         if not barcode_data:
             return
 
-        self.process_scan(barcode_data)
-        if force or len(barcode_data) >= 1:
+        now_mono = monotonic()
+        if (
+            barcode_data == self.last_scan_payload
+            and ((now_mono - self.last_scan_monotonic) * 1000.0) < self.scan_duplicate_guard_ms
+        ):
             self.entry_barcode.delete(0, "end")
+            return
+
+        self.scan_inflight = True
+        try:
+            self.process_scan(barcode_data)
+            self.last_scan_payload = barcode_data
+            self.last_scan_monotonic = now_mono
+            self.entry_barcode.delete(0, "end")
+        finally:
+            self.scan_inflight = False
 
     def process_scan(self, barcode_data):
         """Validasi material scan terhadap resep, lalu simpan ke DB."""
@@ -449,7 +539,17 @@ class AppScanner(ctk.CTk):
         material = next((item for item in self.material_resep if item.get("kode_sap") == barcode_data), None)
         if not material:
             # Fallback: anggap barcode_data adalah formulasi_material_usage.id
-            usage_target = get_usage_scan_target(self.current_job_id, self.current_batch_num, barcode_data)
+            try:
+                usage_target = get_usage_scan_target(self.current_job_id, self.current_batch_num, barcode_data)
+            except Exception:
+                logger.exception(
+                    "Gagal lookup usage_target job_id=%s batch=%s barcode=%s",
+                    self.current_job_id,
+                    self.current_batch_num,
+                    barcode_data,
+                )
+                usage_target = None
+
             if usage_target:
                 usage_id = usage_target.get("id")
                 barcode_pallet_value = usage_target.get("barcode_pallet") or barcode_data
@@ -549,6 +649,8 @@ class AppScanner(ctk.CTk):
 
     def handle_batch_complete(self):
         """Selesaikan batch aktif; lanjut batch berikutnya atau finalisasi job."""
+        self._cancel_scan_debounce()
+        self.scan_inflight = False
         self.batch_active = False
         self.result_display.configure(text=f"BATCH {self.current_batch_num} SELESAI!", text_color="#22c55e")
         self.entry_barcode.configure(state="disabled")
