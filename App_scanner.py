@@ -1,13 +1,14 @@
-import os
-import logging
-from datetime import datetime
+import os # library interaksi sistem (buat folder, file)
+import logging #library mencatat log (pesan sistem)
+from datetime import datetime # catat waktu 
 
-import customtkinter as ctk
-from PIL import Image
+import customtkinter as ctk #library ui / tampilan 
+from PIL import Image # untuk mengolah dan menampilkan gambar 
 
-from app_logging import setup_logging
-from api_server import start_api_server_in_thread
-from database import (
+# Menghubungkan ke file lain 
+from app_logging import setup_logging # memanggil fungsi log dari (app_logging.py)
+from api_server import start_api_server_in_thread #menjalankan server API 
+from database import ( # Memanggil fungsi dari database 
     get_all_jobs,
     get_job_materials,
     get_usage_scan_target,
@@ -15,8 +16,8 @@ from database import (
     update_job_status,
 )
 
-setup_logging()
-logger = logging.getLogger(__name__)
+setup_logging() # jalankan konfigurasi log 
+logger = logging.getLogger(__name__) 
 
 # Lokasi base project (dipakai untuk load asset lokal seperti logo)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,15 +55,15 @@ class AppScanner(ctk.CTk):
 
     def _reset_scan_state(self):
         """Reset seluruh state runtime saat keluar/mulai job baru."""
-        self.is_scanning = False
-        self.batch_active = False
-        self.current_job_id = None
-        self.selected_job_no = "-"
-        self.target_qty_total = 1
-        self.current_batch_num = 1
-        self.completed_batches = []
-        self.material_resep = []
-        self.scanned_materials = set()
+        self.is_scanning = False # penanda apakah layar scanner aktif 
+        self.batch_active = False # penanda apakah proses scan batch sudah dimulai 
+        self.current_job_id = None # ID job dari database 
+        self.selected_job_no = "-" # No job untuk tampilan 
+        self.target_qty_total = 1 # total target batch 
+        self.current_batch_num = 1 # urutan batch saat ini
+        self.completed_batches = [] # daftar batch yg sudah ter scan (riwayat sidebar)
+        self.material_resep = [] # # list material yg harus di scan 
+        self.scanned_materials = set() # penampung kode_sap yg berhasil di scan 
 
         # Data material aktif terakhir untuk payload ke DB
         self.current_material_data = {
@@ -76,12 +77,14 @@ class AppScanner(ctk.CTk):
         for widget in self.main_container.winfo_children():
             widget.destroy()
 
+    # Memunculkan notifikasi sementara (error/sukses)
     def show_toast_notification(self, message, color="green"):
         """Tampilkan notifikasi kecil sementara di bagian atas layar."""
         toast = ctk.CTkLabel(self, text=message, fg_color=color, text_color="white", corner_radius=10)
         toast.place(relx=0.5, rely=0.1, anchor="center")
-        self.after(2000, toast.destroy)
+        self.after(2000, toast.destroy) 
 
+    # Membangun UI halaman daftar job, mengambil data dari database untuk menmapilkan dalam bentuk tabel 
     def show_joblist_selector(self):
         """Render halaman daftar job (status pending/on progress)."""
         self._clear_main_container()
@@ -131,6 +134,7 @@ class AppScanner(ctk.CTk):
         for job in jobs:
             self._render_job_row(scroll_frame, job)
 
+    # fungsi untuk membuat baris (row) data job spesifik 
     def _render_job_row(self, parent, job):
         """Render 1 baris job ke tabel daftar job."""
         status_code = job.get("status", 0)
@@ -157,7 +161,8 @@ class AppScanner(ctk.CTk):
         ctk.CTkLabel(row, text=resep, font=("Arial", 12), text_color="white").place(x=350, y=18)
         ctk.CTkLabel(row, text=f"{target_qty} Batch", font=("Arial", 12), text_color="white").place(x=550, y=18)
         ctk.CTkLabel(row, text=status_text, text_color=status_color, font=("Arial", 12, "bold")).place(x=700, y=18)
-
+        
+        # tombol memilih job dan pindah ke scanner 
         ctk.CTkButton(
             row,
             text=btn_txt,
@@ -169,6 +174,7 @@ class AppScanner(ctk.CTk):
             command=lambda j=job: self.start_job(j),
         ).place(x=900, y=14)
 
+    # Dijalankan saat tombol "pilih job" ditekan, mengambil detail material 
     def start_job(self, job_data):
         """Saat user pilih job: ambil material resep lalu buka halaman scan."""
         job_id = job_data.get("id")
