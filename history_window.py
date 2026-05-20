@@ -1,5 +1,5 @@
-import customtkinter as ctk
-from tkcalendar import Calendar
+import customtkinter as ctk 
+from tkcalendar import Calendar # library widget calendar visual 
 from datetime import datetime
 import logging
 from app_logging import setup_logging
@@ -8,17 +8,19 @@ from database import SCHEMA, get_connection
 setup_logging()
 logger = logging.getLogger(__name__)
 
-class HistoryWindow(ctk.CTkToplevel):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.title("Database History Lengkap")
+# Jendela pop-up tambahan untuk log riwayat hasil scan
+class HistoryWindow(ctk.CTkToplevel): 
+    def __init__(self, parent): # Inisialisasi jendela riwayat dan pengaturan (state management)
+        super().__init__(parent) 
+        self.title("Database History")
         self.geometry("1100x750")
         self.configure(fg_color="#0f172a")
         
+        # Memaksa jendela pop-up naik ke atas
         self.after(200, lambda: self.focus_force())
         self.transient(parent)
         
-        # State Management
+        # Pengelolaan State Management
         self.current_page = 1
         self.rows_per_page = 15
         self.total_data = 0
@@ -28,6 +30,7 @@ class HistoryWindow(ctk.CTkToplevel):
         self.after(500, self.load_data) # Jeda
         self.update_clock()
 
+    # Membangun tata letak visual utama (header, kontainer filter, header tabel, body scroll, footer)
     def setup_ui(self):
         #  HEADER AREA
         self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -46,7 +49,7 @@ class HistoryWindow(ctk.CTkToplevel):
         self.btn_custom.pack(side="left", padx=5)
 
         self.clock_label = ctk.CTkLabel(self.header_frame, text="00:00:00", 
-                                        font=("Consolas", 32, "bold"), text_color="#38bdf8")
+                                        font=("Consolas", 32, "bold"), text_color="#38bdf8") 
         self.clock_label.pack(side="left", padx=40)
 
         self.btn_all = ctk.CTkButton(self.header_frame, text="LIHAT SEMUA DATA", 
@@ -67,7 +70,7 @@ class HistoryWindow(ctk.CTkToplevel):
             ("BATCH", 70),
             ("SAP RM", 120),
             ("NAMA BAHAN", 230),
-            ("QTY", 80),
+            ("QTY", 80), 
             ("BARCODE/USAGE", 180),
             ("SCAN AT", 170),
             ("OPERATOR", 100),
@@ -98,10 +101,12 @@ class HistoryWindow(ctk.CTkToplevel):
         self.total_label = ctk.CTkLabel(self.footer_frame, text="Total: 0 Data", font=("Arial", 12), text_color="#94a3b8")
         self.total_label.pack(side="right")
 
-    def clear_filter_container(self):
+    # Hapus seluruh komponen widget di panel filter
+    def clear_filter_container(self): 
         for widget in self.filter_container.winfo_children():
             widget.destroy()
 
+    # Buka tutup laci panel filter berdasarkan shift operasional kerja 
     def toggle_shift_panel(self):
         if self.active_filter_panel == "shift":
             self.filter_container.configure(height=0)
@@ -112,17 +117,18 @@ class HistoryWindow(ctk.CTkToplevel):
             self.filter_container.configure(height=340) 
             self.clear_filter_container()
             
-            # Kalender
+            # Kalender tunggal filter shift 
             self.cal_shift = Calendar(self.filter_container, selectmode='day', font="Arial 8")
             self.cal_shift.pack(pady=8)
 
             shift_btn_frame = ctk.CTkFrame(self.filter_container, fg_color="transparent")
             shift_btn_frame.pack(pady=5)
             shifts = [("SHIFT 1\n(07:00-15:00)", "#38bdf8"), ("SHIFT 2\n(15:00-23:00)", "#f59e0b"), ("SHIFT 3\n(23:00-07:00)", "#818cf8")]
-            for txt, color in shifts:
+            for txt, color in shifts: 
                 ctk.CTkButton(shift_btn_frame, text=txt, fg_color=color, text_color="black",
                               font=("Arial", 10, "bold"), width=120, height=40).pack(side="left", padx=10)
 
+    # Buka tutup panel filter rentang waktu manual custom (start & end)
     def toggle_custom_panel(self):
         if self.active_filter_panel == "custom":
             self.filter_container.configure(height=0)
@@ -159,11 +165,13 @@ class HistoryWindow(ctk.CTkToplevel):
                 # Menit
                 ctk.CTkComboBox(time_row, values=[f"{i:02d}" for i in range(60)], 
                                 width=60, height=25).pack(side="left", padx=2)
-
+            
+            # Tombol eksekusi filter range 
             ctk.CTkButton(self.filter_container, text="APPLY FILTER RANGE", 
                           fg_color="#0ea5e9", width=200, height=35, 
                           font=("Arial", 11, "bold")).pack(pady=5)
-
+    
+    # Menghapus seluruh filter aktif & kembali ke tabel 
     def reset_filter(self):
         self.filter_container.configure(height=0)
         self.clear_filter_container()
@@ -171,11 +179,13 @@ class HistoryWindow(ctk.CTkToplevel):
         self.current_page = 1
         self.load_data()
 
+    # Fungsi perekrusif internal jam digital real-time header window
     def update_clock(self):
         now = datetime.now().strftime("%H:%M:%S")
         self.clock_label.configure(text=now)
         self.after(1000, self.update_clock)
 
+    # Membangun deretan susunan no tabel halaman dinamis (footer kiri)
     def create_pagination_buttons(self):
         for widget in self.pagination_frame.winfo_children(): widget.destroy()
         num_pages = max(1, (self.total_data // self.rows_per_page) + (1 if self.total_data % self.rows_per_page > 0 else 0))
@@ -186,17 +196,19 @@ class HistoryWindow(ctk.CTkToplevel):
             bg = "#38bdf8" if i == self.current_page else "#1e293b"
             ctk.CTkButton(self.pagination_frame, text=str(i), width=35, fg_color=bg, command=lambda p=i: self.change_page(p)).pack(side="left", padx=2)
         ctk.CTkButton(self.pagination_frame, text=">", width=35, command=lambda: self.change_page(self.current_page + 1)).pack(side="left", padx=2)
-
+    
+    # Pindah pointer target halaman aktif ke urutan angka baru 
     def change_page(self, page):
         if page > 0:
             self.current_page = page
             self.load_data()
-
+    
+    # Menarik record data penggunaan material dari postgre, proses filter, render baris tabel ui
     def load_data(self):
         for widget in self.scroll_frame.winfo_children(): widget.destroy()
         try:
             conn = get_connection(); cur = conn.cursor()
-            count_query = f"""
+            count_query = f""" 
                 SELECT COUNT(*)
                 FROM {SCHEMA}.formulasi_material_usage u
                 WHERE u."scan_at" IS NOT NULL
