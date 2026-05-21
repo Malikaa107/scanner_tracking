@@ -42,7 +42,7 @@ class MasterDataRequest(BaseModel):
     target_menit: int = 0
 
 class UpdateMaterialUsageRequest(BaseModel):
-    """Payload update usage scanner sesuai rule batch + scan_at wajib."""
+    # Payload update usage scanner sesuai rule batch + scan_at wajib.
     joblistId: int
     barcode_pallet: str
     sap_rm: str
@@ -58,7 +58,7 @@ def health_check():
 
 @app.get("/api/jobs")
 def api_list_joblist():
-    """List joblist aktif (status 0 atau 1)."""
+    # List joblist aktif (status 0 atau 1).
     try:
         jobs = list_joblist()
         return {"jobs": jobs}

@@ -1,17 +1,18 @@
-import os
-import logging
-from contextlib import contextmanager
-from datetime import datetime
-from typing import Any
-from uuid import UUID
+import os # Akses sistem 
+import logging # Library pencatat log sistem 
+from contextlib import contextmanager # Membuat context manager koneksi database
+from datetime import datetime # Mengolah format tanggal, waktu 
+from typing import Any # Menentukan tipe data dinamis/bebas pada fungsi 
+from uuid import UUID # Memvalidasi & mengubah teks menjadi format kode 
 
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from dotenv import load_dotenv
-from app_logging import setup_logging
+import psycopg2 # Library penghubung antara python dan database 
+from psycopg2.extras import RealDictCursor # Mengubah hasil query database menjadi format dictionary 
+from dotenv import load_dotenv # Membaca kredensial rahasia dari file .env
+from app_logging import setup_logging # Mengimpor konfigurasi sistem pencatatan log internal 
 
-load_dotenv()
+load_dotenv() # Ambil konfigurasi database dari file .env secara otomatis 
 
+# Menyusun parameter koneksi database (Host, Nama DB, User, Password, Port)
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "database": os.getenv("DB_NAME", "postgres"),
@@ -19,33 +20,34 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", ""),
     "port": os.getenv("DB_PORT", "5432"),
 }
-SCHEMA = os.getenv("DB_SCHEMA", "qc")
+SCHEMA = os.getenv("DB_SCHEMA", "qc") # Menentukan target skema tabel database 
 
-setup_logging()
-logger = logging.getLogger(__name__)
+setup_logging() #Mengaktifkan pencatatan log di awal aplikasi berjalan 
+logger = logging.getLogger(__name__) # Membuat instance pencatat eror khusus file ini 
 
 
+# Koneksi & Interlock 
 def get_connection():
-    """Buka koneksi baru ke PostgreSQL berdasarkan DB_CONFIG."""
+    # Buka koneksi baru ke server PostgreSQL berdasarkan DB_CONFIG.
     return psycopg2.connect(**DB_CONFIG)
 
 
 @contextmanager
 def db_cursor(dict_cursor: bool = False):
-    """Context manager cursor + auto commit/rollback."""
-    conn = get_connection()
-    cursor_factory = RealDictCursor if dict_cursor else None
-    cur = conn.cursor(cursor_factory=cursor_factory)
+    # Context manager cursor + auto commit/rollback. 
+    conn = get_connection() # Hubungkan ke database
+    cursor_factory = RealDictCursor if dict_cursor else None # Atur apakah output berupa kamus kata / teks murni
+    cur = conn.cursor(cursor_factory=cursor_factory) # Buat kursor pengeksekusi perintah SQL 
     try:
-        yield conn, cur
-        conn.commit()
+        yield conn, cur # Serahkan ke koneksi fungsi pembawa query 
+        conn.commit() # Simpan permanen jika query berhasil
     except Exception:
-        conn.rollback()
-        logger.exception("Database transaction failed and rolled back")
-        raise
+        conn.rollback() # Batalkan semua perubahan jika ada eror
+        logger.exception("Database transaction failed and rolled back") #Catat letak kerusakan ke log 
+        raise # Lempar eror agar sistem mengetahui kegagalan 
     finally:
-        cur.close()
-        conn.close()
+        cur.close() #Kursor perintah ditutup kembali
+        conn.close() # Server ditutup 
 
 
 # -----------------------------
@@ -53,12 +55,12 @@ def db_cursor(dict_cursor: bool = False):
 # -----------------------------
 #  list_joblist dipakai get_jobs_pending + 
 def list_joblist():
-    """Ambil joblist aktif (status 0/1) untuk halaman pemilihan job."""
+    # Ambil joblist aktif (status 0/1) untuk halaman pemilihan job.
     query = f"""
         SELECT
             j.id,
             j.nomor_job,
-            j.target_qty,
+            j.target_qty, 
             j.status,
             j."resepId"
         FROM {SCHEMA}.formulasi_joblist j
@@ -66,19 +68,19 @@ def list_joblist():
         ORDER BY j.status ASC, j.tanggal DESC, j.id DESC
     """
     with db_cursor(dict_cursor=True) as (_, cur):
-        cur.execute(query)
-        return cur.fetchall()
+        cur.execute(query) #Jalankan pencarian data 
+        return cur.fetchall() # Kembalikan baris daftar ke job aktif 
 
 
 def _get_job_row(cur, joblist_id: int):
-    """Ambil 1 baris job dan kembalikan selalu dalam format dict."""
+    # Ambil 1 baris job dan kembalikan selalu dalam format dictionary 
     query = f"""
         SELECT id, nomor_job, target_qty, status, "resepId"
         FROM {SCHEMA}.formulasi_joblist
         WHERE id = %s
     """
     cur.execute(query, (joblist_id,))
-    row = cur.fetchone()
+    row = cur.fetchone() # Ambil satu data spesifik 
     if row is None:
         return None
 
@@ -93,10 +95,10 @@ def _get_job_row(cur, joblist_id: int):
         }
 
     # Jika cursor RealDictCursor, hasil sudah dict-like.
-    return row
+    return row 
 
-
-def _is_sap_in_resep(cur, resep_id, sap_rm: str):
+# Validasi apakah kode SAP benar ada di master resep
+def _is_sap_in_resep(cur, resep_id, sap_rm: str): 
     query = f"""
         SELECT 1
         FROM {SCHEMA}.master_resep_item
@@ -104,20 +106,20 @@ def _is_sap_in_resep(cur, resep_id, sap_rm: str):
         LIMIT 1
     """
     cur.execute(query, (resep_id, sap_rm))
-    return cur.fetchone() is not None
+    return cur.fetchone() is not None # Menghasilkan true jika bahan benar, dan false jika bahan salah 
 
 def _normalize_uuid(value: Any):
-    """Normalisasi string UUID; return None jika format tidak valid."""
+    # Normalisasi string UUID; return None jika format tidak valid.
     raw = str(value or "").strip()
     if not raw:
         return None
     try:
-        return str(UUID(raw))
+        return str(UUID(raw)) #Ubah bentuk teks menjadi UUID 
     except (ValueError, TypeError, AttributeError):
-        return None
+        return None # Tolak jika format berantakan 
 
 def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
-    """Ambil row usage berdasarkan id untuk scan mode UUID usage (pakai cursor aktif)."""
+    # Ambil row usage berdasarkan id untuk scan mode UUID usage (pakai cursor aktif).
     usage_uuid = _normalize_uuid(usage_id)
     if not usage_uuid:
         return None
@@ -139,7 +141,7 @@ def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
     row = cur.fetchone()
     if row is None:
         return None
-    if isinstance(row, tuple):
+    if isinstance(row, tuple): #Normalisasi data tuple menjadi dictionary 
         return {
             "id": row[0],
             "joblistId": row[1],
@@ -150,11 +152,12 @@ def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
     return row
 
 def get_usage_scan_target(joblist_id, batch: int, usage_id: str):
-    """Versi publik untuk kebutuhan debug/test di luar transaksi utama."""
+    # Versi publik untuk kebutuhan debug/test di luar transaksi utama.
     with db_cursor(dict_cursor=True) as (_, cur):
         return _get_usage_scan_target(cur, joblist_id, batch, usage_id)
 
 
+# Memeriksa apakah seluruh kebutuhan berat bahan dari batch 1 - akhir terpenuhi 
 def _is_all_batches_completed(cur, joblist_id: int, resep_id, total_batch: int):
     query = f"""
         WITH usage_per_batch AS (
@@ -180,15 +183,15 @@ def _is_all_batches_completed(cur, joblist_id: int, resep_id, total_batch: int):
     """
     cur.execute(query, (joblist_id, total_batch, resep_id))
     result = cur.fetchone()
-    if isinstance(result, tuple):
+    if isinstance(result, tuple): 
         not_done = result[0]
     else:
         not_done = result.get("belum_selesai", 0)
-    return not_done == 0
+    return not_done == 0 #Mengembalikan true jika semua bahan di batch lunas di timbang 
 
 
 def running_batch_joblist(joblist_id: int, batch_ke: int):
-    """Ambil kebutuhan per item untuk batch tertentu + progress usage batch."""
+    # Ambil kebutuhan per item untuk batch tertentu + progress usage batch.
     if batch_ke < 1:
         raise ValueError("batchKe harus >= 1")
 
@@ -229,7 +232,7 @@ def running_batch_joblist(joblist_id: int, batch_ke: int):
         # - no_scan = true => checklist manual
         nama_upper = str(row["nama_bahan_baku"] or "").upper()
         is_air_material = "AIR" in nama_upper
-        is_no_scan = bool(row["no_scan"])
+        is_no_scan = bool(row["no_scan"]) # Otomatis checklist jika master data melarang scan 
 
         items.append(
             {
@@ -238,7 +241,7 @@ def running_batch_joblist(joblist_id: int, batch_ke: int):
                 "qty_standard": float(row["qty_standard"] or 0),
                 "qty_terpakai": float(row["qty_terpakai"] or 0),
                 "sisa": max(float(row["qty_standard"] or 0) - float(row["qty_terpakai"] or 0), 0.0),
-                "is_scan": not (is_air_material or is_no_scan),
+                "is_scan": not (is_air_material or is_no_scan), # izinkan bypass checklist jika bahan bersifat air/no scan 
             }
         )
 
@@ -254,7 +257,7 @@ def running_batch_joblist(joblist_id: int, batch_ke: int):
         "items": items,
     }
 
-
+# Memperbarui berat aktual penimbangan bahan hasil scan ke database, serta memperbarui status pengerjaan formula secara otomatis
 def update_material_usage(
     joblist_id: int,
     barcode_pallet: str,
@@ -265,7 +268,7 @@ def update_material_usage(
     scan_oleh: str,
     usage_id: str = None,
 ):
-    """Update usage material (qty_dipakai + scan_at) dan status job otomatis."""
+    # Update usage material (qty_dipakai + scan_at) dan status job otomatis. 
     if batch < 1:
         raise ValueError("batch wajib >= 1")
 
@@ -353,7 +356,7 @@ def update_material_usage(
 # Compatibility helpers for UI lama
 # -----------------------------
 def get_jobs_pending():
-    """Wrapper kompatibilitas untuk kode lama."""
+    # Wrapper kompatibilitas untuk kode lama. 
     try:
         return list_joblist()
     except Exception as exc:
@@ -362,7 +365,7 @@ def get_jobs_pending():
 
 
 def get_all_jobs():
-    """Wrapper kompatibilitas untuk kode lama."""
+    # Wrapper kompatibilitas penarikan data menyeluruh untuk kode lama.
     try:
         return list_joblist()
     except Exception as exc:
@@ -371,16 +374,16 @@ def get_all_jobs():
 
 
 def get_job_materials(job_id: int):
-    """Wrapper kompatibilitas: map struktur data lama dari running_batch_joblist."""
+    # Wrapper kompatibilitas: map struktur data lama dari running_batch_joblist.
     try:
         data = running_batch_joblist(job_id, 1)
         result = []
         for item in data["items"]:
             result.append(
                 {
-                    "kode_sap": item["sap_rm"],
-                    "nama": item["nama_bahan_baku"],
-                    "target_qty": item["qty_standard"],  # kebutuhan per batch
+                    "kode_sap": item["sap_rm"], #Konversi nama variabel dari sap_rm ke kode_sap
+                    "nama": item["nama_bahan_baku"], # Konversi nama variabel dari nama_bahan_baku ke nama 
+                    "target_qty": item["qty_standard"],  # kebutuhan per batch 
                     "satuan": "Kg",
                     "is_scan": item["is_scan"],
                 }
@@ -408,7 +411,7 @@ def update_job_status(job_id: int, status_code: int):
         logger.exception("Error update_job_status job_id=%s status=%s", job_id, status_code)
         return False
 
-
+# Menarik data riwayat aktivitas 
 def get_history(limit: int, offset: int):
     rows_query = f"""
         SELECT
@@ -431,7 +434,7 @@ def get_history(limit: int, offset: int):
         total = cur.fetchone()[0]
     return rows, total
 
-
+# Memeriksa nama material & target menit operasional yg terdaftar berdasarkan kode SAP 
 def cek_master_data(kode_sap: str):
     query = f"SELECT nama_rawmaterial, COALESCE(\"Target_menit\", 0) FROM {SCHEMA}.master_data WHERE kode_sap = %s"
     try:
@@ -441,7 +444,6 @@ def cek_master_data(kode_sap: str):
     except Exception as exc:
         logger.exception("Error cek_master_data kode_sap=%s", kode_sap)
         return None
-
 
 def tambah_master_data(kode_sap: str, nama_rawmaterial: str, target_menit: int = 0):
     query = f"""
@@ -460,7 +462,7 @@ def tambah_master_data(kode_sap: str, nama_rawmaterial: str, target_menit: int =
         logger.exception("Error tambah_master_data kode_sap=%s", kode_sap)
         return False
 
-
+# Mencatat log data scan 
 def simpan_data(kode_barcode: str):
     query = f"INSERT INTO {SCHEMA}.barcode (kode_barcode, waktu) VALUES (%s, NOW())"
     try:
