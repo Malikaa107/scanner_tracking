@@ -1,14 +1,14 @@
-import threading
-import logging
-from datetime import datetime
+import threading # Untuk membelah jalur kerja (multi threading) agar ui dan server berjalan bersamaan 
+import logging # Untuk mencatat log aktivitas jika ada error pada API 
+from datetime import datetime # Untuk memproses data tanggal, waktu, transaksi scan dari operator 
 
-import uvicorn
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+import uvicorn # Library server utama menjalankan aplikasi fastAPI pada port tertentu
+from fastapi import FastAPI, HTTPException # Framework inti untuk API dan handling status eror http
+from fastapi.middleware.cors import CORSMiddleware # Sistem keamanan untuk memberi izin akses aplikasi luar ke server ini 
+from pydantic import BaseModel # Library untuk mengunci & memvalidasi format struktur data dari luar 
 
-from app_logging import setup_logging
-from database import (
+from app_logging import setup_logging #Mengimpor konfigurasi sistem pencatatan log 
+from database import (  # Mengimpor fungsi komunikasi dari (database.py)
     cek_master_data,
     get_history as db_get_history,
     list_joblist,
@@ -47,7 +47,7 @@ class UpdateMaterialUsageRequest(BaseModel):
     barcode_pallet: str
     sap_rm: str
     batch: int
-    qty_dipakai: float
+    qty_dipakai: float 
     scan_at: datetime
     scan_oleh: str = "Admin"
 
@@ -113,7 +113,7 @@ def api_update_material_usage_alias(payload: UpdateMaterialUsageRequest):
 
 
 @app.get("/api/history")
-def get_history(limit: int = 10, page: int = 1):
+def get_history(limit: int = 10, page: int = 1): 
     if limit < 1 or page < 1:
         raise HTTPException(status_code=400, detail="limit dan page harus >= 1")
 

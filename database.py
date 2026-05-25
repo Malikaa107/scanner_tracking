@@ -66,7 +66,7 @@ def list_joblist():
         FROM {SCHEMA}.formulasi_joblist j
         WHERE j.status IN (0, 1)
         ORDER BY j.status ASC, j.tanggal DESC, j.id DESC
-    """
+    """ # Untuk menyusun teks perintah sql penarik data joblist aktif 
     with db_cursor(dict_cursor=True) as (_, cur):
         cur.execute(query) #Jalankan pencarian data 
         return cur.fetchall() # Kembalikan baris daftar ke job aktif 
@@ -78,20 +78,20 @@ def _get_job_row(cur, joblist_id: int):
         SELECT id, nomor_job, target_qty, status, "resepId"
         FROM {SCHEMA}.formulasi_joblist
         WHERE id = %s
-    """
-    cur.execute(query, (joblist_id,))
+    """ # Penyusun query sql pencarian 1 joblist 
+    cur.execute(query, (joblist_id,)) # Untuk mengeksekusi query dengan parameter id joblist
     row = cur.fetchone() # Ambil satu data spesifik 
     if row is None:
-        return None
+        return None # Mengembalikan kosong jika data tidak ditemukan
 
     # Jika cursor biasa, hasilnya tuple -> normalisasi ke dict.
     if isinstance(row, tuple):
         return {
-            "id": row[0],
-            "nomor_job": row[1],
-            "target_qty": row[2],
-            "status": row[3],
-            "resepId": row[4],
+            "id": row[0], # Untuk memetakan kolom id 
+            "nomor_job": row[1],# Memetakan kolom nomor job 
+            "target_qty": row[2], # Memetakan kolom target kuantiti 
+            "status": row[3], # Memetakan kolom status 
+            "resepId": row[4], # Memetakan kolom resepId
         }
 
     # Jika cursor RealDictCursor, hasil sudah dict-like.
@@ -104,25 +104,25 @@ def _is_sap_in_resep(cur, resep_id, sap_rm: str):
         FROM {SCHEMA}.master_resep_item
         WHERE "resepId" = %s AND sap_rm = %s
         LIMIT 1
-    """
-    cur.execute(query, (resep_id, sap_rm))
+    """ # Query pengecekan kecocokan kode SAP dalam resep  
+    cur.execute(query, (resep_id, sap_rm)) # Menjalankan verifikasi kode SAP dan ID resep
     return cur.fetchone() is not None # Menghasilkan true jika bahan benar, dan false jika bahan salah 
 
 def _normalize_uuid(value: Any):
     # Normalisasi string UUID; return None jika format tidak valid.
-    raw = str(value or "").strip()
-    if not raw:
-        return None
+    raw = str(value or "").strip() # Bersihkan spasi diawal dan akhir teks input 
+    if not raw:  
+        return None # Kembali kosong jika input teks kosong 
     try:
         return str(UUID(raw)) #Ubah bentuk teks menjadi UUID 
-    except (ValueError, TypeError, AttributeError):
-        return None # Tolak jika format berantakan 
+    except (ValueError, TypeError, AttributeError): 
+        return None # Tolak jika format berantakan  
 
 def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
     # Ambil row usage berdasarkan id untuk scan mode UUID usage (pakai cursor aktif).
-    usage_uuid = _normalize_uuid(usage_id)
+    usage_uuid = _normalize_uuid(usage_id) # Memvalidasi & normalisasi format UUID input 
     if not usage_uuid:
-        return None
+        return None # Batal proses jika UUID tidak valid 
 
     query = f"""
         SELECT
@@ -136,25 +136,25 @@ def _get_usage_scan_target(cur, joblist_id, batch: int, usage_id: str):
           AND "joblistId" = %s
           AND "batch" = %s
         LIMIT 1
-    """
-    cur.execute(query, (usage_uuid, joblist_id, batch))
-    row = cur.fetchone()
+    """ # Menyusun query pencarian data pemakaian material 
+    cur.execute(query, (usage_uuid, joblist_id, batch)) # Untuk eksekusi pencarian target data usage 
+    row = cur.fetchone() # Ambil 1 baris hasil data usage 
     if row is None:
-        return None
+        return None 
     if isinstance(row, tuple): #Normalisasi data tuple menjadi dictionary 
         return {
-            "id": row[0],
-            "joblistId": row[1],
-            "sap_rm": row[2],
-            "barcode_pallet": row[3],
-            "batch": row[4],
+            "id": row[0], # Ambil data id usage 
+            "joblistId": row[1], # Ambil data id joblist 
+            "sap_rm": row[2], # Ambil data kode SAP material 
+            "barcode_pallet": row[3], # Ambil data stiker barcode pallet
+            "batch": row[4], # Ambil data nomor batch 
         }
-    return row
+    return row # Mengembalikan data dalam format dictionary 
 
 def get_usage_scan_target(joblist_id, batch: int, usage_id: str):
     # Versi publik untuk kebutuhan debug/test di luar transaksi utama.
     with db_cursor(dict_cursor=True) as (_, cur):
-        return _get_usage_scan_target(cur, joblist_id, batch, usage_id)
+        return _get_usage_scan_target(cur, joblist_id, batch, usage_id) # Untuk memanggil fungsi internal scan target 
 
 
 # Memeriksa apakah seluruh kebutuhan berat bahan dari batch 1 - akhir terpenuhi 
@@ -180,28 +180,28 @@ def _is_all_batches_completed(cur, joblist_id: int, resep_id, total_batch: int):
            AND upb."batch" = br.batch_ke
         WHERE mi."resepId" = %s
           AND COALESCE(upb.qty_pakai, 0) < mi.qty_standard
-    """
-    cur.execute(query, (joblist_id, total_batch, resep_id))
-    result = cur.fetchone()
+    """ # Untuk query kalkulator pengecekan total berat standar vs aktual di semua batch 
+    cur.execute(query, (joblist_id, total_batch, resep_id)) # Hitung sisa kekurangan bahan 
+    result = cur.fetchone() # Mengambil angka hasil perhitungan 
     if isinstance(result, tuple): 
-        not_done = result[0]
+        not_done = result[0] # Untuk ambil angka index pertama jika berbentuk tuple 
     else:
-        not_done = result.get("belum_selesai", 0)
+        not_done = result.get("belum_selesai", 0) # Untuk mengambil key dict jika berbentuk dictionary  
     return not_done == 0 #Mengembalikan true jika semua bahan di batch lunas di timbang 
 
 
 def running_batch_joblist(joblist_id: int, batch_ke: int):
     # Ambil kebutuhan per item untuk batch tertentu + progress usage batch.
     if batch_ke < 1:
-        raise ValueError("batchKe harus >= 1")
+        raise ValueError("batchKe harus >= 1") #Untuk menolak jika operator memasukkan angka batch nol/minus  
 
     with db_cursor(dict_cursor=True) as (_, cur):
-        job = _get_job_row(cur, joblist_id)
+        job = _get_job_row(cur, joblist_id) # Mengambil data ringkasan job aktif 
         if not job:
             raise ValueError("Joblist tidak ditemukan")
 
         if batch_ke > job["target_qty"]:
-            raise ValueError("batchKe melebihi target_qty joblist")
+            raise ValueError("batchKe melebihi target_qty joblist") # Untuk menolak jika input melebihi target maksimum batch 
 
         materials_query = f"""
             SELECT
@@ -221,25 +221,25 @@ def running_batch_joblist(joblist_id: int, batch_ke: int):
             ) u ON u."sap_rm" = mi.sap_rm
             WHERE mi."resepId" = %s
             ORDER BY mi.sap_rm ASC
-        """
-        cur.execute(materials_query, (joblist_id, batch_ke, job["resepId"]))
-        rows = cur.fetchall()
+        """ # Untuk query penggabungan data item master resep dengan total akumulasi timbangan terpakai 
+        cur.execute(materials_query, (joblist_id, batch_ke, job["resepId"])) # Untuk menjalankan query penarikan data resep 
+        rows = cur.fetchall() # Menampung seluruh baris data material resep 
 
     items = []
     for row in rows:
         # Rule UI:
         # - nama material mengandung "AIR" => checklist manual
         # - no_scan = true => checklist manual
-        nama_upper = str(row["nama_bahan_baku"] or "").upper()
+        nama_upper = str(row["nama_bahan_baku"] or "").upper() # Ubah nama bahan baku menjadi huruf kapital 
         is_air_material = "AIR" in nama_upper
         is_no_scan = bool(row["no_scan"]) # Otomatis checklist jika master data melarang scan 
 
         items.append(
             {
-                "sap_rm": row["sap_rm"],
-                "nama_bahan_baku": row["nama_bahan_baku"],
-                "qty_standard": float(row["qty_standard"] or 0),
-                "qty_terpakai": float(row["qty_terpakai"] or 0),
+                "sap_rm": row["sap_rm"], # Mengsisi kode SAP material 
+                "nama_bahan_baku": row["nama_bahan_baku"], # Mengisi nama bahan baku 
+                "qty_standard": float(row["qty_standard"] or 0), # Mengisi berat standar resep 
+                "qty_terpakai": float(row["qty_terpakai"] or 0), # Mengisi berat aktual 
                 "sisa": max(float(row["qty_standard"] or 0) - float(row["qty_terpakai"] or 0), 0.0),
                 "is_scan": not (is_air_material or is_no_scan), # izinkan bypass checklist jika bahan bersifat air/no scan 
             }
@@ -258,7 +258,7 @@ def running_batch_joblist(joblist_id: int, batch_ke: int):
     }
 
 # Memperbarui berat aktual penimbangan bahan hasil scan ke database, serta memperbarui status pengerjaan formula secara otomatis
-def update_material_usage(
+def update_material_usage( 
     joblist_id: int,
     barcode_pallet: str,
     sap_rm: str,
@@ -358,10 +358,10 @@ def update_material_usage(
 def get_jobs_pending():
     # Wrapper kompatibilitas untuk kode lama. 
     try:
-        return list_joblist()
+        return list_joblist() # Memanggil fungsi utama pembaca daftar joblist 
     except Exception as exc:
-        logger.exception("Error get_jobs_pending")
-        return []
+        logger.exception("Error get_jobs_pending") # Catat log error
+        return [] 
 
 
 def get_all_jobs():
@@ -374,9 +374,9 @@ def get_all_jobs():
 
 
 def get_job_materials(job_id: int):
-    # Wrapper kompatibilitas: map struktur data lama dari running_batch_joblist.
+    # Wrapper kompatibilitas: mapping struktur data lama dari running_batch_joblist.
     try:
-        data = running_batch_joblist(job_id, 1)
+        data = running_batch_joblist(job_id, 1) #Mengambil data kebutuhan resep pada batch pertama 
         result = []
         for item in data["items"]:
             result.append(
@@ -384,34 +384,35 @@ def get_job_materials(job_id: int):
                     "kode_sap": item["sap_rm"], #Konversi nama variabel dari sap_rm ke kode_sap
                     "nama": item["nama_bahan_baku"], # Konversi nama variabel dari nama_bahan_baku ke nama 
                     "target_qty": item["qty_standard"],  # kebutuhan per batch 
-                    "satuan": "Kg",
-                    "is_scan": item["is_scan"],
+                    "satuan": "Kg", 
+                    "is_scan": item["is_scan"], # #Menyalin status wajib scan/manual 
                 }
             )
-        return result
+        return result 
     except Exception as exc:
-        logger.exception("Error get_job_materials for job_id=%s", job_id)
+        logger.exception("Error get_job_materials for job_id=%s", job_id) #Mencatat log detail kesalahan sistem 
         return []
 
 
 # -----------------------------
 # Existing API features (tetap)
 # -----------------------------
+# Untuk memfasilitasi admin/sistem merubah status pengerjaan perintah job secara manual 
 def update_job_status(job_id: int, status_code: int):
     query = f"""
         UPDATE {SCHEMA}.formulasi_joblist
         SET status = %s
         WHERE id = %s
-    """
+    """ # Untuk query pembaruan manual status baris joblist
     try:
         with db_cursor() as (_, cur):
-            cur.execute(query, (status_code, job_id))
-        return True
+            cur.execute(query, (status_code, job_id)) # Pembaruan status job ke postgresql 
+        return True #Mengirimkan sinyal menandakan proses update berhasil 
     except Exception as exc:
         logger.exception("Error update_job_status job_id=%s status=%s", job_id, status_code)
         return False
 
-# Menarik data riwayat aktivitas 
+# Menarik data riwayat aktivitas lama untuk komponen tabel halaman (pagination)
 def get_history(limit: int, offset: int):
     rows_query = f"""
         SELECT
@@ -424,27 +425,28 @@ def get_history(limit: int, offset: int):
         LEFT JOIN {SCHEMA}.master_data m ON b.kode_barcode = m.kode_sap
         ORDER BY b.id DESC
         LIMIT %s OFFSET %s
-    """
+    """ #Untuk query penarik data log baris riwayat dgn limit pembatas jumlah data per halaman 
     total_query = f"SELECT COUNT(*) FROM {SCHEMA}.barcode"
 
     with db_cursor() as (_, cur):
-        cur.execute(rows_query, (limit, offset))
-        rows = cur.fetchall()
-        cur.execute(total_query)
-        total = cur.fetchone()[0]
+        cur.execute(rows_query, (limit, offset)) # Untuk eksekusi penarikan potongan lembar data riwayat
+        rows = cur.fetchall() # Untuk menampung seluruh baris data riwayat hasil query 
+        cur.execute(total_query) # Eksekusi hitung total baris tabel log 
+        total = cur.fetchone()[0] # Untuk ambil int hasil total hitungan baris riwayat 
     return rows, total
 
 # Memeriksa nama material & target menit operasional yg terdaftar berdasarkan kode SAP 
 def cek_master_data(kode_sap: str):
-    query = f"SELECT nama_rawmaterial, COALESCE(\"Target_menit\", 0) FROM {SCHEMA}.master_data WHERE kode_sap = %s"
+    query = f"SELECT nama_rawmaterial, COALESCE(\"Target_menit\", 0) FROM {SCHEMA}.master_data WHERE kode_sap = %s" #Pengecekan master data material 
     try:
         with db_cursor() as (_, cur):
-            cur.execute(query, (kode_sap,))
+            cur.execute(query, (kode_sap,)) #Untuk pencarian spesifikasi material berdasarkan kode SAP 
             return cur.fetchone()
     except Exception as exc:
         logger.exception("Error cek_master_data kode_sap=%s", kode_sap)
         return None
 
+# Untuk memasukkan data raw material baru ke tabel / memperbarui nama jika kode SAP sudah ada (upsert)
 def tambah_master_data(kode_sap: str, nama_rawmaterial: str, target_menit: int = 0):
     query = f"""
         INSERT INTO {SCHEMA}.master_data (kode_sap, nama_rawmaterial, "Target_menit")
@@ -453,11 +455,11 @@ def tambah_master_data(kode_sap: str, nama_rawmaterial: str, target_menit: int =
         DO UPDATE SET
             nama_rawmaterial = EXCLUDED.nama_rawmaterial,
             "Target_menit" = EXCLUDED."Target_menit"
-    """
+    """ # Untuk query simpan data master baru 
     try:
         with db_cursor() as (_, cur):
-            cur.execute(query, (kode_sap, nama_rawmaterial, target_menit))
-        return True
+            cur.execute(query, (kode_sap, nama_rawmaterial, target_menit)) # Untuk mengeksekusi perintah upsert data master material 
+        return True # Mengirimkan sinyal true tanda master data sukses diamankan di database 
     except Exception as exc:
         logger.exception("Error tambah_master_data kode_sap=%s", kode_sap)
         return False
@@ -467,11 +469,11 @@ def simpan_data(kode_barcode: str):
     query = f"INSERT INTO {SCHEMA}.barcode (kode_barcode, waktu) VALUES (%s, NOW())"
     try:
         with db_cursor() as (_, cur):
-            cur.execute(query, (kode_barcode,))
-        return True
-    except Exception as exc:
+            cur.execute(query, (kode_barcode,)) # Penyimpanan teks barcode dalam database log 
+        return True # Mengirimkan status true tanda log scan sukses tertulis permanen 
+    except Exception as exc: 
         logger.exception("Error simpan_data kode_barcode=%s", kode_barcode)
-        return False
+        return False # untuk mengirimkan status false tanda log gagal terarsip di database
 
 
 def validate_pallet(barcode_id, kode_sap_resep):
@@ -479,11 +481,11 @@ def validate_pallet(barcode_id, kode_sap_resep):
         SELECT id, kode_sap, nama_raw_material, kg
         FROM {SCHEMA}.masterlist_rm
         WHERE id = %s
-    """
+    """ # untuk query pengecekan data spesifikasi muatan pallet logistik gudang
     try:
         with db_cursor(dict_cursor=True) as (_, cur):
-            cur.execute(query, (barcode_id,))
-            pallet = cur.fetchone()
+            cur.execute(query, (barcode_id,)) # Eksekusi pencarian detail pallet berdasarkan nomor id barcode 
+            pallet = cur.fetchone() 
 
         if not pallet:
             return {"status": False, "message": "Barcode tidak terdaftar!"}

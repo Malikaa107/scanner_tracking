@@ -15,10 +15,10 @@ class HistoryWindow(ctk.CTkToplevel):
         self.title("Database History")
         self.geometry("1100x750")
         self.configure(fg_color="#0f172a")
-        
+
+        self.resizable(True, True)
         # Memaksa jendela pop-up naik ke fokus layar paling depan
         self.after(200, lambda: self.focus_force())
-        self.transient(parent)
         
         # Pengelolaan State Management (Variabel Kontrol)
         self.current_page = 1 # Menandai posisi halaman aktif 
@@ -273,7 +273,7 @@ class HistoryWindow(ctk.CTkToplevel):
         for widget in self.pagination_frame.winfo_children(): 
             widget.destroy()
             
-        num_pages = max(1, (self.total_data // self.rows_per_page) + (1 if self.total_data % self.rows_per_page > 0 else 0))
+        num_pages = max(1, (self.total_data // self.rows_per_page) + (1 if self.total_data % self.rows_per_page > 0 else 0)) 
         
         # Tombol Navigasi Mundur
         ctk.CTkButton(self.pagination_frame, text="<", width=35, command=lambda: self.change_page(self.current_page - 1)).pack(side="left", padx=2) 
