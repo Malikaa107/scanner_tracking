@@ -158,7 +158,7 @@ class AppScanner(ctk.CTk):
         if not jobs: # jika data job kosong / tidak ditemukan koneksi database 
             ctk.CTkLabel( 
                 scroll_frame,
-                text="TIDAK ADA JOBLIST AKTIF DI DATABASE", 
+                text="TIDAK ADA JOBLIST AKTIF", 
                 font=("Arial", 16),
                 text_color="#475569",
             ).pack(pady=100) # tampilkan pesan peringatan di tengah area scroll 
@@ -534,7 +534,7 @@ class AppScanner(ctk.CTk):
             barcode_data == self.last_scan_payload # jika isi barcode sama dengan hasil scan terakhir 
             and ((now_mono - self.last_scan_monotonic) * 1000.0) < self.scan_duplicate_guard_ms # jeda waktu di bawah 700 ms 
         ):
-            self.entry_barcode.delete(0, "end") # kosongkan entry untuk scan berikutnya 
+            self.entry_barcode.delete(0, "end") # kosongkan entry untuk scan berikutnya
             self.after(50,self.entry_barcode.focus_set)
             return # Batalkan proses, mencegah duplikasi data scan 
 
@@ -634,14 +634,14 @@ class AppScanner(ctk.CTk):
                     "status_scan": "SUCCESS" # Tambah teks penanda 
                 }
                 
-                # Alamat URL Node-RED disesuaikan dengan node [post] /update_plc kamu
-                node_red_url = "http://localhost:1880/update_plc" 
+                # Alamat URL Node-RED disesuaikan dengan node [post] /update_plc 
+                node_red_url = "http://localhost:1880/update_plc"
                 
                 # Kirim data menggunakan metode POST secara async/timeout pendek agar UI tidak ngefreeze
                 requests.post(node_red_url, json=payload, timeout=1.0)
                 logger.info(f"Berhasil mengirim data scan {barcode_data} ke Node-RED")
             except Exception as e:
-                logger.error(f"Gagal interkoneksi ke Node-RED: {e}") 
+                logger.error(f"Gagal interkoneksi ke Node-RED: {e}")
 
         else: # jika data tidak berhasil disimpan ke database, tampilkan notifikasi eror  
             self.show_toast_notification("Data gagal di-update", color="red") # notifikasi eror ke user 
@@ -740,15 +740,15 @@ class AppScanner(ctk.CTk):
                 }
                 # Kirim data ke Node-RED (misal Node-RED jalan di port 1880)
                 requests.post("http://localhost:1880/api/job-selesai", json=payload, timeout=2) 
-            except Exception as e:
-                logger.error(f"Gagal mengirim data ke Node-RED: {e}")  
+            except Exception as e: 
+                logger.error(f"Gagal mengirim data ke Node-RED: {e}")    
 
             self.after(1500, self.show_joblist_selector) # setelah 1.5 detik, kembali ke hal pemilihan jb utama 
-        else: # jika update status jb gagal 
+        else: # jika update status jb gagal
             self.show_toast_notification("Gagal update status job", color="red") 
  
     def update_sidebar_lists(self):
-        # Render ulang daftar item di sidebar kiri dan kanan.
+        # Render ulang daftar item di sidebar kiri dan kanan 
         # Bersihkan isi lama agar tidak duplikat
         for widget in self.scroll_sidebar_left.winfo_children(): 
             widget.destroy() 
