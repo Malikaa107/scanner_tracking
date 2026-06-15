@@ -793,7 +793,7 @@ class AppScanner(ctk.CTk):
         # Tampilkan item material ke list scan atau checklist manual.
         nama = (item.get("nama") or "-").upper() # Ambil nama bahan baku 
         qty = item.get("target_qty", 0) # Ambil berat target kuantitas bahan baku 
-        satuan = item.get("satuan", "Kg") # Ambil teks satuan bahan baku (default Kg jika kosong)
+        satuan = item.get("satuan", "Kg") # Ambil teks satuan bahan baku (default Kg jika kosong) 
         kode_sap = item.get("kode_sap") # Ambil kode SAP material bahan baku 
         is_done = kode_sap in self.scanned_materials # Logika cek status pengerjaan item bahan aktif saat ini 
 
