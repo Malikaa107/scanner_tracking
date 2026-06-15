@@ -178,55 +178,76 @@ class HistoryWindow(ctk.CTkToplevel):
         # Membuka atau menutup laci panel filter kustom tanggal dan jam secara manual.
         if self.active_filter_panel == "custom":
             self.filter_container.configure(height=0)
-            self.clear_filter_container()
+            
+            # Sembunyikan isi container secara aman tanpa menghancurkan objeknya
+            if hasattr(self, 'cal_wrapper_main') and self.cal_wrapper_main.winfo_exists():
+                self.cal_wrapper_main.pack_forget()
+            if hasattr(self, 'btn_apply_filter') and self.btn_apply_filter.winfo_exists():
+                self.btn_apply_filter.pack_forget()
+                
             self.active_filter_panel = None
         else:
             self.active_filter_panel = "custom"
-            self.filter_container.configure(height=320) # Ditambah sedikit tingginya agar muat rapi
-            self.clear_filter_container()
-
-            cal_wrapper = ctk.CTkFrame(self.filter_container, fg_color="transparent")
-            cal_wrapper.pack(pady=8)
-
-            #  SISI KIRI (START FILTER)
-            f_start = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
-            f_start.pack(side="left", padx=15)
-            self.cal_custom_start = Calendar(f_start, selectmode='day', font="Arial 8", borderwidth=1)
-            self.cal_custom_start.pack(pady=5)
             
-            time_row_start = ctk.CTkFrame(f_start, fg_color="transparent")
-            time_row_start.pack(pady=2, fill="x")
-            ctk.CTkLabel(time_row_start, text="START : ", font=("Arial", 11, "bold"), text_color="black").pack(side="left")
-            self.combo_start_hour = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(24)], width=65, height=25)
-            self.combo_start_hour.pack(side="left", padx=2)
-            self.combo_start_hour.set("00")
-            self.combo_start_min = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(60)], width=65, height=25)
-            self.combo_start_min.pack(side="left", padx=2)
-            self.combo_start_min.set("00")
+            # 1. RESET container
+            self.filter_container.pack_configure(fill="x", expand=False)
+            self.filter_container.configure(height=320) # Mengunci tinggi ideal panel kustom
 
-            # SISI KANAN (END FILTER)
-            f_end = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
-            f_end.pack(side="left", padx=15)
-            self.cal_custom_end = Calendar(f_end, selectmode='day', font="Arial 8", borderwidth=1)
-            self.cal_custom_end.pack(pady=5)
-            
-            time_row_end = ctk.CTkFrame(f_end, fg_color="transparent")
-            time_row_end.pack(pady=2, fill="x")
-            ctk.CTkLabel(time_row_end, text="END : ", font=("Arial", 11, "bold"), text_color="black").pack(side="left")
-            self.combo_end_hour = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(24)], width=65, height=25)
-            self.combo_end_hour.pack(side="left", padx=2)
-            self.combo_end_hour.set("23")
-            self.combo_end_min = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(60)], width=65, height=25)
-            self.combo_end_min.pack(side="left", padx=2)
-            self.combo_end_min.set("59")
-            
-            # Tombol eksekusi dengan fungsi yang sudah terhubung
-            ctk.CTkButton(
-                self.filter_container, text="APPLY FILTER RANGE", 
-                fg_color="#0ea5e9", hover_color="#0284c7", width=200, height=35, 
-                font=("Arial", 11, "bold"), command=self.apply_custom_range_filter
-            ).pack(pady=10)
+            if not hasattr(self, 'cal_wrapper_main') or not self.cal_wrapper_main.winfo_exists():
+                self.clear_filter_container()
 
+                cal_wrapper = ctk.CTkFrame(self.filter_container, fg_color="transparent")
+                cal_wrapper.pack(pady=8)
+                self.cal_wrapper_main = cal_wrapper 
+
+                # Kunci kolom agar wrapper kalender tidak membesar mengikuti sisa ruang shift
+                cal_wrapper.grid_columnconfigure(0, weight=0)
+                cal_wrapper.grid_columnconfigure(1, weight=0)
+
+                #  SISI KIRI (START FILTER) -> Dikunci di Grid Kolom 0
+                f_start = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
+                f_start.grid(row=0, column=0, padx=25, pady=5)
+                self.cal_custom_start = Calendar(f_start, selectmode='day', font="Arial 8", borderwidth=1)
+                self.cal_custom_start.pack(pady=5)
+                
+                time_row_start = ctk.CTkFrame(f_start, fg_color="transparent")
+                time_row_start.pack(pady=2, fill="x")
+                ctk.CTkLabel(time_row_start, text="START : ", font=("Arial", 11, "bold"), text_color="black").pack(side="left")
+                self.combo_start_hour = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(24)], width=65, height=25)
+                self.combo_start_hour.pack(side="left", padx=2)
+                self.combo_start_hour.set("00")
+                self.combo_start_min = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(60)], width=65, height=25)
+                self.combo_start_min.pack(side="left", padx=2)
+                self.combo_start_min.set("00")
+
+                # SISI KANAN (END FILTER) -> Dikunci di Grid Kolom 1
+                f_end = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
+                f_end.grid(row=0, column=1, padx=25, pady=5)
+                self.cal_custom_end = Calendar(f_end, selectmode='day', font="Arial 8", borderwidth=1)
+                self.cal_custom_end.pack(pady=5)
+                
+                time_row_end = ctk.CTkFrame(f_end, fg_color="transparent")
+                time_row_end.pack(pady=2, fill="x")
+                ctk.CTkLabel(time_row_end, text="END : ", font=("Arial", 11, "bold"), text_color="black").pack(side="left")
+                self.combo_end_hour = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(24)], width=65, height=25)
+                self.combo_end_hour.pack(side="left", padx=2)
+                self.combo_end_hour.set("23")
+                self.combo_end_min = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(60)], width=65, height=25)
+                self.combo_end_min.pack(side="left", padx=2)
+                self.combo_end_min.set("59")
+                
+                # Tombol eksekusi tetap aman menggunakan pack standar
+                self.btn_apply_filter = ctk.CTkButton(
+                    self.filter_container, text="APPLY FILTER RANGE", 
+                    fg_color="#0ea5e9", hover_color="#0284c7", width=200, height=35, 
+                    font=("Arial", 11, "bold"), command=self.apply_custom_range_filter
+                )
+                self.btn_apply_filter.pack(pady=10)
+                
+            else:
+                # JIKA KALENDER SUDAH ADA, LANGSUNG TAMPILKAN KEMBALI
+                self.cal_wrapper_main.pack(pady=8)
+                self.btn_apply_filter.pack(pady=10)
     def apply_custom_range_filter(self):
         # Menggabungkan teks tanggal kalender kustom beserta jam pilihan ComboBox
         try:

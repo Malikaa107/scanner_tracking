@@ -472,26 +472,34 @@ class AppScanner(ctk.CTk):
 
     def start_batch_logic(self):
         # Aktifkan batch saat tombol START ditekan.
-        self._cancel_scan_debounce() # batalkan timer tunda 
-        self.scan_inflight = False # reset penanda proses scan sedang berjalan 
-        self.entry_barcode.delete(0, "end") # kosongkan total teks dalam kotak input 
-        self.batch_active = True # ubah status penanda batch aktif menjadi true 
-        # ubah style tombol menjadi warna gelap menandakan proses kerja sedang berjalan 
-        self.btn_batch_start.configure( 
+        self._cancel_scan_debounce() # batalkan timer tunda
+        self.scan_inflight = False # reset penanda proses scan sedang berjalan
+        self.batch_active = True # ubah status penanda batch aktif menjadi true
+        
+        # ubah style tombol menjadi warna gelap menandakan proses kerja sedang berjalan
+        self.btn_batch_start.configure(
             state="disabled",
-            text=f"SCANNING BATCH {self.current_batch_num}...", 
+            text=f"SCANNING BATCH {self.current_batch_num}...",
             fg_color="#1e3d59",
         )
-        self.entry_barcode.configure(state="normal", placeholder_text=f"Scan Batch {self.current_batch_num}...") # Buka kunci input
-        self.entry_barcode.focus_set() # paksa kursor langsung aktif di kotak entry scan 
-        self.result_display.configure(text="Silahkan Scan Barcode", text_color="#38bdf8") 
+        
+        # 1. BUKA KUNCI INPUT TERLEBIH DAHULU
+        self.entry_barcode.configure(state="normal", placeholder_text=f"Scan Batch {self.current_batch_num}...")
+        
+        # 2. GUNAKAN DELAY 300 MILIDETIK UNTUK MENGHAPUS UUID YANG BARU MASUK
+        # Kita beri waktu agar respon backend masuk dulu, baru kita sapu bersih!
+        self.after(300, lambda: self.entry_barcode.delete(0, "end"))
+        
+        # 3. Posisikan kursor dan perbarui teks petunjuk
+        self.entry_barcode.focus_set() # paksa kursor langsung aktif di kotak entry scan
+        self.result_display.configure(text="Silahkan Scan Barcode", text_color="#38bdf8")
 
     def auto_scan_handler(self, _event=None, force=False):
         # Tangani input scanner dengan mode debounce + trigger paksa (Enter).
         if not self.batch_active: # jika tombol batch belum aktif 
             return # Abaikan dan batalkan 
 
-        if force: # jika dipicu dengan tombol (enter)
+        if force: # jika dipicu dengan tombol (enter) 
             self._cancel_scan_debounce() # Batalkan timer tunda 
             self._consume_scan_buffer() # Langsung proses isi entry tanpa menunggu tunda 
             return # selesai 
@@ -566,12 +574,12 @@ class AppScanner(ctk.CTk):
                 usage_target = get_usage_scan_target(self.current_job_id, self.current_batch_num, barcode_data) 
             except Exception: # jika query ke postgre eror 
                 logger.exception( # catat detail baris eror ke sistem log 
-                    "Gagal lookup usage_target job_id=%s batch=%s barcode=%s",
+                    "Gagal lookup usage_target job_id=%s batch=%s barcode=%s", 
                     self.current_job_id,
                     self.current_batch_num,
                     barcode_data, 
                 )
-                usage_target = None # Set nilai target kosong 
+                usage_target = None # Set nilai target kosong
 
             if usage_target: # jika data ditemukan di database 
                 usage_id = usage_target.get("id") # ambil ID utama baris tabel untuk parameter update 
@@ -614,7 +622,7 @@ class AppScanner(ctk.CTk):
             self.show_toast_notification(str(exc), color="red") # Notifikasi error ke user 
             return 
 
-        # Tandai selesai hanya jika update DB berhasil
+        # Tandai selesai hanya jika update DB berhasil 
         self.scanned_materials.add(self.current_material_data["sap_rm"]) # Tambahkan kode SAP bahan yang berhasil di scan ke set bahan yang sudah selesai
         self.update_sidebar_lists() # Perbarui tampilan daftar bahan sidebar sesuai status terkini 
         self.check_all_materials_completed() # Periksa apakah seluruh bahan di batch sudah selesai untuk lanjut ke penyelesaian batch 
@@ -710,7 +718,7 @@ class AppScanner(ctk.CTk):
             # Aktifkan kembali tombol start untuk memulai batch berikutnya
             self.btn_batch_start.configure( 
                 state="normal",
-                text=f"START BATCH {self.current_batch_num} >",
+                text=f"START BATCH {self.current_batch_num} >", 
                 fg_color="#3b82f6",
             )
             self.batch_info_label.configure(  # Perbarui info job & batch di header 
