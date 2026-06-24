@@ -1,5 +1,6 @@
 import customtkinter as ctk # Library UI / tampilan utama
-from tkcalendar import Calendar # Library widget kalender visual 
+from tkinter import ttk # Library tambahan untuk widget tabel (treeview)
+from tkcalendar import Calendar, DateEntry # Library kalender untuk filter tanggal
 from datetime import datetime, timedelta # Modul manipulasi tanggal & kalkulasi shift kerja 
 import logging # Library pencatat aktivitas sistem 
 from app_logging import setup_logging # Ambil fungsi pengaturan awal sistem log
@@ -39,7 +40,7 @@ class HistoryWindow(ctk.CTkToplevel):
         self.header_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.header_frame.pack(fill="x", padx=30, pady=20)
         
-        # Tombol pembuka laci filter shift kerja pabrik
+        # Tombol pembuka laci filter shift kerja operasional 
         self.btn_shift = ctk.CTkButton( 
             self.header_frame, text="DATA OPERASIONAL SHIFT", 
             fg_color="transparent", border_width=2, border_color="#38bdf8",
@@ -173,81 +174,78 @@ class HistoryWindow(ctk.CTkToplevel):
             self.load_data()  
         except Exception:
             logger.exception("Gagal menerapkan filter data operasional shift.")
-
+            
+    # Fungsi pembuka laci filter custom rentang tanggal dan jam        
     def toggle_custom_panel(self):
-        # Membuka atau menutup laci panel filter kustom tanggal dan jam secara manual.
         if self.active_filter_panel == "custom":
             self.filter_container.configure(height=0)
-            
-            # Sembunyikan isi container secara aman tanpa menghancurkan objeknya
-            if hasattr(self, 'cal_wrapper_main') and self.cal_wrapper_main.winfo_exists():
-                self.cal_wrapper_main.pack_forget()
-            if hasattr(self, 'btn_apply_filter') and self.btn_apply_filter.winfo_exists():
-                self.btn_apply_filter.pack_forget()
-                
+            self.clear_filter_container() 
             self.active_filter_panel = None
         else:
             self.active_filter_panel = "custom"
-            
-            # 1. RESET container
             self.filter_container.pack_configure(fill="x", expand=False)
-            self.filter_container.configure(height=320) # Mengunci tinggi ideal panel kustom
+            self.filter_container.configure(height=350)
+            self.clear_filter_container()
 
-            if not hasattr(self, 'cal_wrapper_main') or not self.cal_wrapper_main.winfo_exists():
-                self.clear_filter_container()
+            # Membuat wrapper frame kalender (start & end) 
+            cal_wrapper = ctk.CTkFrame(self.filter_container, fg_color="#e2e8f0") 
+            cal_wrapper.pack(pady=10, padx=10)
+            self.cal_wrapper_main = cal_wrapper 
 
-                cal_wrapper = ctk.CTkFrame(self.filter_container, fg_color="transparent")
-                cal_wrapper.pack(pady=8)
-                self.cal_wrapper_main = cal_wrapper 
-
-                # Kunci kolom agar wrapper kalender tidak membesar mengikuti sisa ruang shift
-                cal_wrapper.grid_columnconfigure(0, weight=0)
-                cal_wrapper.grid_columnconfigure(1, weight=0)
-
-                #  SISI KIRI (START FILTER) -> Dikunci di Grid Kolom 0
-                f_start = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
-                f_start.grid(row=0, column=0, padx=25, pady=5)
-                self.cal_custom_start = Calendar(f_start, selectmode='day', font="Arial 8", borderwidth=1)
-                self.cal_custom_start.pack(pady=5)
+            # Fungsi kalender dengan header yang disesuaikan
+            def create_clean_calendar(parent):
+                cal = Calendar(parent, selectmode='day', font="Arial 8", 
+                               background='#64748b', foreground='black', 
+                               # Header diubah 
+                               headersbackground='#64748b',  # Warna latar belakang header
+                               headersforeground='black', # Warna font header
+                               normalbackground='white', normalforeground='black', 
+                               weekendbackground='white', weekendforeground='black',
+                               # Sub-bulan (tepi)
+                               othermonthbackground='#f8fafc', othermonthforeground='#cbd5e1',
+                               # Seleksi Biru
+                               selectbackground='#38bdf8', selectforeground='black',
+                               borderwidth=0)
+                cal.pack(pady=5, padx=5)
                 
-                time_row_start = ctk.CTkFrame(f_start, fg_color="transparent")
-                time_row_start.pack(pady=2, fill="x")
-                ctk.CTkLabel(time_row_start, text="START : ", font=("Arial", 11, "bold"), text_color="black").pack(side="left")
-                self.combo_start_hour = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(24)], width=65, height=25)
-                self.combo_start_hour.pack(side="left", padx=2)
-                self.combo_start_hour.set("00")
-                self.combo_start_min = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(60)], width=65, height=25)
-                self.combo_start_min.pack(side="left", padx=2)
-                self.combo_start_min.set("00")
+                # Mengatur ulang warna font khusus pada baris header agar terlihat rapi 
+                cal.calevent_remove('all') 
+                return cal
 
-                # SISI KANAN (END FILTER) -> Dikunci di Grid Kolom 1
-                f_end = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
-                f_end.grid(row=0, column=1, padx=25, pady=5)
-                self.cal_custom_end = Calendar(f_end, selectmode='day', font="Arial 8", borderwidth=1)
-                self.cal_custom_end.pack(pady=5)
-                
-                time_row_end = ctk.CTkFrame(f_end, fg_color="transparent")
-                time_row_end.pack(pady=2, fill="x")
-                ctk.CTkLabel(time_row_end, text="END : ", font=("Arial", 11, "bold"), text_color="black").pack(side="left")
-                self.combo_end_hour = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(24)], width=65, height=25)
-                self.combo_end_hour.pack(side="left", padx=2)
-                self.combo_end_hour.set("23")
-                self.combo_end_min = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(60)], width=65, height=25)
-                self.combo_end_min.pack(side="left", padx=2)
-                self.combo_end_min.set("59")
-                
-                # Tombol eksekusi tetap aman menggunakan pack standar
-                self.btn_apply_filter = ctk.CTkButton(
-                    self.filter_container, text="APPLY FILTER RANGE", 
-                    fg_color="#0ea5e9", hover_color="#0284c7", width=200, height=35, 
-                    font=("Arial", 11, "bold"), command=self.apply_custom_range_filter
-                )
-                self.btn_apply_filter.pack(pady=10)
-                
-            else:
-                # JIKA KALENDER SUDAH ADA, LANGSUNG TAMPILKAN KEMBALI
-                self.cal_wrapper_main.pack(pady=8)
-                self.btn_apply_filter.pack(pady=10)
+            # SISI KIRI (START) 
+            f_start = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
+            f_start.grid(row=0, column=0, padx=5, pady=5)
+            self.cal_custom_start = create_clean_calendar(f_start)
+            
+            time_row_start = ctk.CTkFrame(f_start, fg_color="transparent")
+            time_row_start.pack(pady=5)
+            ctk.CTkLabel(time_row_start, text="START : ", font=("Arial", 10, "bold")).pack(side="left")
+            self.combo_start_hour = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(24)], width=50, height=25)
+            self.combo_start_hour.pack(side="left", padx=2)
+            self.combo_start_hour.set("00")
+            self.combo_start_min = ctk.CTkComboBox(time_row_start, values=[f"{i:02d}" for i in range(60)], width=50, height=25)
+            self.combo_start_min.pack(side="left", padx=2)
+            self.combo_start_min.set("00")
+
+            # SISI KANAN (END)
+            f_end = ctk.CTkFrame(cal_wrapper, fg_color="transparent")
+            f_end.grid(row=0, column=1, padx=5, pady=5)
+            self.cal_custom_end = create_clean_calendar(f_end)
+            # Membuat baris waktu 
+            time_row_end = ctk.CTkFrame(f_end, fg_color="transparent")
+            time_row_end.pack(pady=5)
+            ctk.CTkLabel(time_row_end, text="END : ", font=("Arial", 10, "bold")).pack(side="left")
+            self.combo_end_hour = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(24)], width=50, height=25)
+            self.combo_end_hour.pack(side="left", padx=2)
+            self.combo_end_hour.set("23")
+            self.combo_end_min = ctk.CTkComboBox(time_row_end, values=[f"{i:02d}" for i in range(60)], width=50, height=25) 
+            self.combo_end_min.pack(side="left", padx=2)
+            self.combo_end_min.set("59")
+
+            # Tombol Apply filter
+            ctk.CTkButton(self.filter_container, text="APPLY FILTER", fg_color="#38bdf8", 
+                          text_color="black", command=self.apply_custom_range_filter).pack(pady=10)
+                          
     def apply_custom_range_filter(self):
         # Menggabungkan teks tanggal kalender kustom beserta jam pilihan ComboBox
         try:
@@ -256,7 +254,7 @@ class HistoryWindow(ctk.CTkToplevel):
             m_start = int(self.combo_start_min.get())
             dt_start = datetime.combine(date_start, datetime.min.time()).replace(hour=h_start, minute=m_start, second=0)
 
-            # Menggunakan selection_get() untuk kalender akhir
+            # Menggunakan selection_get() untuk kalender akhir 
             date_end = self.cal_custom_end.selection_get()
             h_end = int(self.combo_end_hour.get())
             m_end = int(self.combo_end_min.get())
@@ -289,14 +287,14 @@ class HistoryWindow(ctk.CTkToplevel):
         self.clock_label.configure(text=now) 
         self.after(1000, self.update_clock) 
 
-    def create_pagination_buttons(self): 
+    def create_pagination_buttons(self):
         # Membangun susunan tombol nomor halaman dinamis (footer kiri).
         for widget in self.pagination_frame.winfo_children(): 
             widget.destroy()
             
         num_pages = max(1, (self.total_data // self.rows_per_page) + (1 if self.total_data % self.rows_per_page > 0 else 0)) 
         
-        # Tombol Navigasi Mundur
+        # Tombol Navigasi Mundur 
         ctk.CTkButton(self.pagination_frame, text="<", width=35, command=lambda: self.change_page(self.current_page - 1)).pack(side="left", padx=2) 
         
         start_p = max(1, self.current_page - 1) 

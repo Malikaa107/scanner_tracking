@@ -1,18 +1,18 @@
 import os # library interaksi sistem (buat folder, file)
 import logging # library untuk mencatat log (pesan sistem) 
-import requests
+import requests # Library untuk request data ke server API 
 from time import monotonic # untuk menghitung durasi waktu presisi secara linear untuk pelindung scan ganda 
 from datetime import datetime #mengambil data waktu saat ini (tanggal, waktu)
 
 import customtkinter as ctk #library ui / tampilan 
 from PIL import Image # untuk mengolah dan menampilkan gambar
 
-from app_logging import setup_logging #mengimpor fungsi eksternal untuk awal konfigurasi awal sistem log 
-from api_server import start_api_server_in_thread #mengimpor fungsi untuk menjalankan server API di bg
-from history_window import HistoryWindow #mengimpor window tambahan untuk menampilkan riwayat scan
+from app_logging import setup_logging # mengimpor fungsi eksternal untuk awal konfigurasi awal sistem log 
+from api_server import start_api_server_in_thread # mengimpor fungsi untuk menjalankan server API di bg
+from history_window import HistoryWindow # mengimpor window tambahan untuk menampilkan riwayat scan
 from database import ( # mengimpor fungsi komunikasi database dari file database.py
     get_all_jobs,
-    get_usage_scan_target,
+    get_usage_scan_target, 
     running_batch_joblist,
     update_material_usage,
     update_job_status,
@@ -33,7 +33,7 @@ STATUS_MAP = {
 
 
 class AppScanner(ctk.CTk):
-    # Aplikasi utama scanner formulasi.
+    # Aplikasi utama scanner formulasi. 
 
     def __init__(self):
         # Inisialisasi window, state awal, dan halaman pertama.
@@ -43,7 +43,7 @@ class AppScanner(ctk.CTk):
         self.configure(fg_color="#0f172a")
 
         # Container utama untuk merender semua halaman
-        self.main_container = ctk.CTkFrame(self, fg_color="#0f172a", corner_radius=0)
+        self.main_container = ctk.CTkFrame(self, fg_color="#0f172a", corner_radius=0) 
         self.main_container.pack(fill="both", expand=True)
 
         # Set state awal scanner
@@ -62,7 +62,7 @@ class AppScanner(ctk.CTk):
             try:
                 self.after_cancel(pending_after)
             except Exception:
-                logger.debug("scan debounce callback sudah tidak aktif", exc_info=True)
+                logger.debug("scan debounce callback sudah tidak aktif", exc_info=True) 
 
         self.is_scanning = False # menandakan layar scan sedang dalam mode scan aktif/tidak 
         self.batch_active = False # menandakan batch sedang aktif 
@@ -93,7 +93,7 @@ class AppScanner(ctk.CTk):
     def _clear_main_container(self):
         # Hapus semua widget di halaman utama. 
         for widget in self.main_container.winfo_children(): # melakukan perulangan pada setiap widget 
-            widget.destroy() # menghapus widget tsb dari memori dan layar 
+            widget.destroy() # menghapus widget tsb dari memori dan layar
 
     # Memunculkan notifikasi sementara (error/sukses)
     def show_toast_notification(self, message, color="green"):
@@ -243,7 +243,7 @@ class AppScanner(ctk.CTk):
         # Tentukan batch resume dari DB + daftar item yang sudah selesai di batch aktif.
         batch_cache = {} # penampung sementara data item per no batch 
         completed_batches = [] # list lokal menampung penamaan string batch selesai scan 
-        current_batch_num = 1 # Default mulai dari batch no 1
+        current_batch_num = 1 # Default mulai dari batch no 1 
         scanned_materials = set() # set lokal menampung bahan yang sudah terscan 
         found_incomplete = False # penanda jika ditemukan batch yg belum lengkap ter scan
         done_codes_by_batch = {} # mencatat kumpulan kode SAP yg selesai scan per indeks batch 
@@ -262,7 +262,7 @@ class AppScanner(ctk.CTk):
 
             done_codes = set() # set lokal untuk menampung kode bahan yang selesai di dalam interal batch ini 
             all_done = True # anggap seluruh bahan di dalam batch ini sudah selesai ter scan 
-            for item in items: # looping memeriksa setiap bahan baku di dalam satu batch 
+            for item in items: # looping memeriksa setiap bahan baku di dalam satu batch
                 sap_rm = item.get("sap_rm") # ambil kode SAP bahan 
                 qty_standard = float(item.get("qty_standard") or 0.0) # ambil target jumlah standar timbangan
                 qty_terpakai = float(item.get("qty_terpakai") or 0.0) # ambil jumlah aktual lapangan yg tersimpan 
@@ -300,12 +300,12 @@ class AppScanner(ctk.CTk):
                 "satuan": "Kg", # default menggunakan satuan kg (bisa diubah dinamis jika dibutuhkan) 
                 "is_scan": item.get("is_scan", True), # penentu apakah barang wajib di scan / ceklist manual 
             }
-            for item in current_items 
+            for item in current_items # lakukan perulangan untuk setiap item di dalam list current_items
         ]
         return { # mengembalikan paket data resume dalam bentuk dictionary lengkap 
-            "current_batch_num": current_batch_num,
-            "completed_batches": completed_batches,
-            "scanned_materials": scanned_materials,
+            "current_batch_num": current_batch_num, 
+            "completed_batches": completed_batches, 
+            "scanned_materials": scanned_materials, 
             "material_resep": material_resep,
             "all_batches_done": len(completed_batches) >= self.target_qty_total,
         }
@@ -331,18 +331,18 @@ class AppScanner(ctk.CTk):
         self.content_container = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.content_container.pack(side="top", fill="both", expand=True, padx=20, pady=(0, 20))
 
-        title_x = self._render_header_logo() # panggil fungsi penggambaran logo 
+        title_x = self._render_header_logo() # panggil fungsi penggambaran logo  
         ctk.CTkLabel(
             self.header,
             text="SISTEM SCANNER FORMULASI",
             font=("Franklin Gothic Heavy", 28, "bold"),
-            text_color="white",
+            text_color="white", 
         ).place(x=title_x, y=30) # pasang judul aplikasi di samping logo 
 
         # Info job + batch aktif
         self.batch_info_label = ctk.CTkLabel(
             self.header,
-            text=f"JOB: {self.selected_job_no} | BATCH: {self.current_batch_num}/{self.target_qty_total}",
+            text=f"JOB: {self.selected_job_no} | BATCH: {self.current_batch_num}/{self.target_qty_total}", 
             font=("Arial", 16, "bold"),
             text_color="#38bdf8",
             fg_color="#0f172a",
@@ -354,7 +354,7 @@ class AppScanner(ctk.CTk):
 
         # Jam realtime 
         self.datetime_label = ctk.CTkLabel(self.header, text="", font=("Arial", 14, "bold"), text_color="#38bdf8")
-        self.datetime_label.place(relx=0.97, rely=0.15, anchor="ne")
+        self.datetime_label.place(relx=0.97, rely=0.15, anchor="ne") 
 
         # Tombol aksi kanan atas
         ctk.CTkButton(
@@ -364,13 +364,13 @@ class AppScanner(ctk.CTk):
             width=100,
             height=35,
             font=("Arial", 12, "bold"),
-            command=self.konfirmasi_stop, # panggil fungsi dialog konfirmasi sata tombol keluar di klik 
+            command=self.konfirmasi_stop, # panggil fungsi konfirmasi stop job saat di klik 
         ).place(relx=0.85, rely=0.65, anchor="ne")
 
         ctk.CTkButton(
             self.header,
             text="HISTORY",
-            fg_color="#20C997",
+            fg_color="#20C997", 
             width=100,
             height=35,
             font=("Arial", 12, "bold"),
@@ -392,7 +392,7 @@ class AppScanner(ctk.CTk):
             return 30 # kembalikan jarak default 30 pixel 
 
     def open_history_window(self):
-        # Buka window history atau fokus ke window yang sudah terbuka.
+        # Buka window history atau fokus ke window yang sudah terbuka. 
         try:
             # periksa apakah sub-window history sudah terbuka
             if hasattr(self, "history_window") and self.history_window and self.history_window.winfo_exists():
@@ -446,7 +446,7 @@ class AppScanner(ctk.CTk):
             center_wrapper,
             text="TEKAN START UNTUK SCAN",
             font=("Arial", 32, "bold"),
-            text_color="#94a3b8",
+            text_color="#94a3b8", 
         )
         self.result_display.pack(pady=(0, 20))
 
@@ -463,39 +463,49 @@ class AppScanner(ctk.CTk):
             border_color="#334155",
             state="disabled", # kondisi awal terkunci (disabled) 
         )
-        self.entry_barcode.pack(pady=0)
+        self.entry_barcode.pack(pady=0) 
 
         # Event input scanner: support Enter + debounce saat scanner tidak kirim Enter
         self.entry_barcode.bind("<KeyRelease>", self.auto_scan_handler)
         # Menghubungkan tombol Enter (Return) dari keyboard untuk memicu pembacaan instan tanpa jeda tunda
         self.entry_barcode.bind("<Return>", lambda _e: self.auto_scan_handler(force=True))
 
+# Logika utama tombol start batch: mengaktifkan mode scan, memperbarui tampilan, dan mempersiapkan input barcode.
     def start_batch_logic(self):
-        # Aktifkan batch saat tombol START ditekan.
-        self._cancel_scan_debounce() # batalkan timer tunda
-        self.scan_inflight = False # reset penanda proses scan sedang berjalan
-        self.batch_active = True # ubah status penanda batch aktif menjadi true
+        self._cancel_scan_debounce() # batalkan timer tunda jika ada input sebelumnya
+        self.scan_inflight = False # reset status simpan data ke database agar menerima input baru
+        self.batch_active = True # tandai batch aktif agar input scan diterima & di proses 
         
-        # ubah style tombol menjadi warna gelap menandakan proses kerja sedang berjalan
+        # 1. Refresh tampilan sidebar (menghancurkan & menggambar ulang list)
+        self.update_sidebar_lists()
+
+        # 2. Kunci kembali tombolnya agar tidak bisa diklik dua kali
         self.btn_batch_start.configure(
             state="disabled",
             text=f"SCANNING BATCH {self.current_batch_num}...",
             fg_color="#1e3d59",
         )
         
-        # 1. BUKA KUNCI INPUT TERLEBIH DAHULU
-        self.entry_barcode.configure(state="normal", placeholder_text=f"Scan Batch {self.current_batch_num}...")
-        
-        # 2. GUNAKAN DELAY 300 MILIDETIK UNTUK MENGHAPUS UUID YANG BARU MASUK
-        # Kita beri waktu agar respon backend masuk dulu, baru kita sapu bersih!
-        self.after(300, lambda: self.entry_barcode.delete(0, "end"))
-        
-        # 3. Posisikan kursor dan perbarui teks petunjuk
-        self.entry_barcode.focus_set() # paksa kursor langsung aktif di kotak entry scan
-        self.result_display.configure(text="Silahkan Scan Barcode", text_color="#38bdf8")
+        # 3. Siapkan teks instruksi utama di tengah
+        self.result_display.configure(
+            text=f"Silahkan Scan Barcode Batch {self.current_batch_num}",
+            text_color="#38bdf8" 
+        )
+
+        # 4. KUNCI UTAMA: Beri jeda 250ms setelah tombol diklik 
+        # untuk memastikan Windows selesai memproses "efek klik" tombol GUI,
+        # baru kemudian kursor direbut paksa masuk ke kotak input tengah.
+        self.after(250, lambda: self.aktifkan_input_barcode()) 
+
+# Fungsi pembantu untuk mengaktifkan kotak entry barcode & memfokuskan kursor 
+    def aktifkan_input_barcode(self):
+        if hasattr(self, 'entry_barcode') and self.entry_barcode.winfo_exists():
+            self.entry_barcode.configure(state="normal") # aktifkan kotak entry 
+            self.entry_barcode.delete(0, "end") # Bersihkan sisa teks jika ada
+            self.entry_barcode.focus_force()    # Paksa fokus ketikan ke sini
 
     def auto_scan_handler(self, _event=None, force=False):
-        # Tangani input scanner dengan mode debounce + trigger paksa (Enter).
+        # Tangani input scanner dengan mode debounce + trigger paksa (Enter). 
         if not self.batch_active: # jika tombol batch belum aktif 
             return # Abaikan dan batalkan 
 
@@ -518,7 +528,7 @@ class AppScanner(ctk.CTk):
         finally:
             self.scan_debounce_after_id = None # Kosongkan variabel penampung ID timer 
 
-    def _schedule_scan_debounce(self):
+    def _schedule_scan_debounce(self): 
         # Jadwalkan eksekusi scan setelah input stabil.
         self._cancel_scan_debounce() # Bersihkan jadwal lama terlebih dahulu 
         # Set jadwal baru : jalankan fungsi _consume_scan_buffer setelah (default 180ms)
@@ -542,7 +552,7 @@ class AppScanner(ctk.CTk):
             barcode_data == self.last_scan_payload # jika isi barcode sama dengan hasil scan terakhir 
             and ((now_mono - self.last_scan_monotonic) * 1000.0) < self.scan_duplicate_guard_ms # jeda waktu di bawah 700 ms 
         ):
-            self.entry_barcode.delete(0, "end") # kosongkan entry untuk scan berikutnya
+            self.entry_barcode.delete(0, "end") # kosongkan entry untuk scan berikutnya 
             self.after(50,self.entry_barcode.focus_set)
             return # Batalkan proses, mencegah duplikasi data scan 
 
@@ -552,7 +562,7 @@ class AppScanner(ctk.CTk):
             self.last_scan_payload = barcode_data # simpan data barcode yang selesai di scan 
             self.last_scan_monotonic = now_mono # simpan catatan waktu saat scan berhasil di proses
             self.entry_barcode.delete(0, "end") # kosongkan entry untuk scan berikutnya 
-            self.after(100, self.entry_barcode.focus_set) 
+            self.after(100, self.entry_barcode.focus_set) # fokuskan kursor ke kotak entry untuk menerima input berikutnya
         finally:
                 self.after(200,lambda:setattr(self,"scan_inflight",False)) # reset penanda proses simpan data selesai, lanjut menerima input berikutnya
 
@@ -563,7 +573,7 @@ class AppScanner(ctk.CTk):
             return 
 
         usage_id = None # Default awal ID baris tabel material usage kosong 
-        barcode_pallet_value = barcode_data # Default nilai barcode yg disimpan teks input -
+        barcode_pallet_value = barcode_data # Default nilai barcode yg disimpan teks input
 
         # Cari item resep yang sap_rm-nya sama dengan barcode hasil scan
         material = next((item for item in self.material_resep if item.get("kode_sap") == barcode_data), None)
@@ -571,7 +581,7 @@ class AppScanner(ctk.CTk):
             # Fallback: anggap barcode_data adalah formulasi_material_usage.id 
             try:
             
-                usage_target = get_usage_scan_target(self.current_job_id, self.current_batch_num, barcode_data) 
+                usage_target = get_usage_scan_target(self.current_job_id, self.current_batch_num, barcode_data) # ambil data baris tabel material_usage dari database.py
             except Exception: # jika query ke postgre eror 
                 logger.exception( # catat detail baris eror ke sistem log 
                     "Gagal lookup usage_target job_id=%s batch=%s barcode=%s", 
@@ -586,7 +596,7 @@ class AppScanner(ctk.CTk):
                 barcode_pallet_value = usage_target.get("barcode_pallet") or barcode_data # Ambil nama asli 
                 usage_sap = usage_target.get("sap_rm") # Ambil kode SAP yang terikat data pengguna
                 # Cari ulang kecocokan resep berdasarkan Kode SAP yang terikat pada tabel 
-                material = next((item for item in self.material_resep if item.get("kode_sap") == usage_sap), None)
+                material = next((item for item in self.material_resep if item.get("kode_sap") == usage_sap), None) 
 
             if not material: # Jika dicari masih tidak ditemukan kecocokan item resep
                 self.show_toast_notification("Scan tidak cocok dengan material resep/job aktif", color="red") # Notifikasi eror 
@@ -603,7 +613,7 @@ class AppScanner(ctk.CTk):
         try:
             update_result = update_material_usage( # fungsi pembaruan data pemakaian bahan baku di (database.py)
                 joblist_id=self.current_job_id, # ID job aktif untuk parameter joblist_id di database 
-                barcode_pallet=barcode_pallet_value, # 
+                barcode_pallet=barcode_pallet_value, # teks barcode hasil scan untuk parameter barcode_pallet di database
                 sap_rm=self.current_material_data["sap_rm"], # kode SAP bahan baku terdeteksi 
                 batch=self.current_batch_num, # angka no batch aktif pengerjaan
                 qty_dipakai=self.current_material_data["target_qty"], # berat target bahan baku terdeteksi 
@@ -611,10 +621,10 @@ class AppScanner(ctk.CTk):
                 scan_oleh="Admin", # nama pengguna 
                 usage_id=usage_id, # Mengirimkan ID jika update, None jika insert baru
             )
-            is_saved = bool(update_result.get("saved")) # Ambil status berhasil simpan dari hasil fungsi update_material_usage (database.py)
+            is_saved = bool(update_result.get("saved")) # Ambil status berhasil simpan dari hasil fungsi update_material_usage (database.py) 
         except Exception as exc: # jika terjadi error saat menyimpan data ke database
             logger.exception( # catat detail eror ke sistem log 
-                "Error process_scan job_id=%s sap_rm=%s batch=%s",  
+                "Error process_scan job_id=%s sap_rm=%s batch=%s",
                 self.current_job_id,
                 self.current_material_data.get("sap_rm"),
                 self.current_batch_num,
@@ -628,7 +638,7 @@ class AppScanner(ctk.CTk):
         self.check_all_materials_completed() # Periksa apakah seluruh bahan di batch sudah selesai untuk lanjut ke penyelesaian batch 
 
         if is_saved: # Jika data berhasil disimpan ke database, tampilkan notifikasi sukses 
-            self.show_toast_notification("Data berhasil di-update", color="green") # Notifikasi sukses ke
+            self.show_toast_notification("Data berhasil di-update", color="green") # Notifikasi sukses ke user 
 
             #  INTEGRASI NODE-RED 
             try:
@@ -642,7 +652,7 @@ class AppScanner(ctk.CTk):
                     "status_scan": "SUCCESS" # Tambah teks penanda 
                 }
                 
-                # Alamat URL Node-RED disesuaikan dengan node [post] /update_plc 
+                # Alamat URL Node-RED disesuaikan dengan node [post]
                 node_red_url = "http://localhost:1880/update_plc"
                 
                 # Kirim data menggunakan metode POST secara async/timeout pendek agar UI tidak ngefreeze
@@ -686,7 +696,7 @@ class AppScanner(ctk.CTk):
                 kode_sap, 
                 self.current_batch_num,
             )
-            self.show_toast_notification(str(exc), color="red") # 
+            self.show_toast_notification(str(exc), color="red") 
             return # Batalkan proses checklist manual 
 
         if is_checked: # Jika item sudah tercentang sebelumnya 
@@ -708,17 +718,18 @@ class AppScanner(ctk.CTk):
         self.scan_inflight = False # Reset penanda proses scan sedang berjalan 
         self.batch_active = False # set status batch aktif menjadi false, tanda proses scan batch ini selesai 
         self.result_display.configure(text=f"BATCH {self.current_batch_num} SELESAI!", text_color="#22c55e") 
-        self.entry_barcode.configure(state="disabled") # kunci input scanner 
+        self.entry_barcode.configure(state="disabled") # kunci input scanner fomulasi 
 
         if self.current_batch_num < self.target_qty_total: 
             # Masih ada batch berikutnya
             self.completed_batches.append(f"Batch {self.current_batch_num}") # Tambahkan batch yang baru selesai ke daftar riwayat batch selesai
-            self.current_batch_num += 1 # Naikkan no batch aktif ke no berikutnya 
-            self.scanned_materials.clear() # Reset set bahan yang sudah selesai untuk batch berikutnya 
-            # Aktifkan kembali tombol start untuk memulai batch berikutnya
-            self.btn_batch_start.configure( 
+            self.current_batch_num += 1
+            # reset hasil scan batch sebelumnya
+            self.scanned_materials.clear()
+            
+            self.btn_batch_start.configure(
                 state="normal",
-                text=f"START BATCH {self.current_batch_num} >", 
+                text=f"START BATCH {self.current_batch_num} >",
                 fg_color="#3b82f6",
             )
             self.batch_info_label.configure(  # Perbarui info job & batch di header 
@@ -746,8 +757,8 @@ class AppScanner(ctk.CTk):
                 "status": "SELESAI", 
                 "waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
-                # Kirim data ke Node-RED (misal Node-RED jalan di port 1880)
-                requests.post("http://localhost:1880/api/job-selesai", json=payload, timeout=2) 
+                # Kirim data ke Node-RED (misal Node-RED jalan di port 1880) 
+                requests.post("http://localhost:1880/api/job-selesai", json=payload, timeout=2)                                                               
             except Exception as e: 
                 logger.error(f"Gagal mengirim data ke Node-RED: {e}")    
 
@@ -893,20 +904,20 @@ class AppScanner(ctk.CTk):
             fg_color="#ef4444",
             hover_color="#dc2626",
             font=("Arial", 12, "bold"),
-            command=lambda p=pop: self.eksekusi_keluar(p),
-        ).pack(side="left", padx=10)
+            command=lambda p=pop: self.eksekusi_keluar(p), 
+        ).pack(side="left", padx=10) 
 
     def update_clock(self):
         #Update jam di header tiap detik saat mode scanning aktif.
-        if self.is_scanning and hasattr(self, "datetime_label"):
-            self.datetime_label.configure(text=datetime.now().strftime("%A, %d %B %Y\n%H:%M:%S"))
-            self.after(1000, self.update_clock)
+        if self.is_scanning and hasattr(self, "datetime_label"): # pastikan mode scanning aktif dan label jam tersedia sebelum update 
+            self.datetime_label.configure(text=datetime.now().strftime("%A, %d %B %Y\n%H:%M:%S")) # format tampilan jam 
+            self.after(1000, self.update_clock) # jadwalkan update berikutnya 
 
 
 if __name__ == "__main__":
     # Jalankan API internal sebagai thread daemon
-    start_api_server_in_thread()
+    start_api_server_in_thread() 
 
     # Jalankan aplikasi desktop
     app = AppScanner()
-    app.mainloop()
+    app.mainloop() 
