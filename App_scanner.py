@@ -528,7 +528,7 @@ class AppScanner(ctk.CTk):
         finally:
             self.scan_debounce_after_id = None # Kosongkan variabel penampung ID timer 
 
-    def _schedule_scan_debounce(self): 
+    def _schedule_scan_debounce(self):
         # Jadwalkan eksekusi scan setelah input stabil.
         self._cancel_scan_debounce() # Bersihkan jadwal lama terlebih dahulu 
         # Set jadwal baru : jalankan fungsi _consume_scan_buffer setelah (default 180ms)
