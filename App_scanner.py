@@ -121,7 +121,7 @@ class AppScanner(ctk.CTk):
             text_color="white",
         ).pack(side="left")
 
-        # Menampilkan tombol history di sisi kanan 
+        # Menampilkan tombol history di sisi kanan
         ctk.CTkButton(
             title_bar,
             text="HISTORY", 
@@ -139,15 +139,15 @@ class AppScanner(ctk.CTk):
 
         # Daftar tuple yg berisi teks kolom & koordinat posisi 
         headers = [
-            ("NOMOR JOB", 20),
+            ("NOMOR JOB", 20), 
             ("TANGGAL", 200),
             ("RESEP TARGET", 350),
             ("TARGET QTY", 550),
             ("STATUS", 700),
-            ("ACTION", 900),
+            ("ACTION", 900), 
         ]
         for text, x_pos in headers: # perulangan memasang setiap label judul kolom 
-            ctk.CTkLabel(header_bar, text=text, font=("Arial", 11, "bold"), text_color="#94a3b8").place(x=x_pos, y=10)
+            ctk.CTkLabel(header_bar, text=text, font=("Arial", 11, "bold"), text_color="#94a3b8").place(x=x_pos, y=10) 
 
         # Area scroll untuk isi data job
         scroll_frame = ctk.CTkScrollableFrame(self.main_container, fg_color="transparent", label_text="")
@@ -665,7 +665,7 @@ class AppScanner(ctk.CTk):
             self.show_toast_notification("Data gagal di-update", color="red") # notifikasi eror ke user 
 
     def manual_check_handler(self, kode_sap): 
-        # Checklist manual untuk item non-scan (toggle). 
+        # Checklist manual untuk item non-scan (toggle).
         if not self.batch_active: # Jika tombol start batch belum diaktifkan oleh user 
             return # Abaikan input checklist manual 
         
